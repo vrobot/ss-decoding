@@ -1,4 +1,3 @@
-
 ---
 
 ## 0 . Why does this repo exist?
@@ -84,6 +83,73 @@ python scripts/pull_model.py model
 ├── tests/                # smoke + golden‑token tests
 └── TODO.md               # granular 30‑task checklist
 ```
+
+## 2.5 Working with the vLLM Submodule
+
+This project uses a fork of the `vllm` library, included as a Git submodule in the `vllm/` directory. This allows us to maintain custom modifications (like the early-exit speculative decoding logic in `engine/early_exit.py`) separately from the main `vllm` repository while still tracking a specific version of our fork.
+
+### Initializing or Re-initializing the Submodule
+
+If you cloned the repository without the `--recursive` flag, or if the `vllm/` directory is empty or missing, you can initialize the submodule manually:
+
+```bash
+# 1. Initialize the submodule configuration
+git submodule init
+
+# 2. Update the submodule to fetch its contents
+git submodule update --recursive
+
+# 3. Install the submodule in editable mode (if not already done)
+pip install -e "vllm[dev]"
+```
+This process registers the submodule defined in `.gitmodules` and fetches the correct commit referenced by the parent repository.
+
+### Daily Workflow
+
+When making changes *within* the `vllm` fork:
+
+1.  **Navigate to the submodule directory:**
+    ```bash
+    cd vllm
+    ```
+2.  **Make your code changes** (e.g., edit `engine/spec_decode.py`).
+3.  **Commit and push your changes *to your fork*:**
+    ```bash
+    # Assuming you are on a branch like 'llama4-early-exit'
+    git add engine/spec_decode.py
+    git commit -m "feat: add new logic to spec_decode"
+    git push -u origin llama4-early-exit
+    ```
+4.  **Return to the parent repository:**
+    ```bash
+    cd ..
+    ```
+5.  **Update the parent repository to point to the new submodule commit:**
+    ```bash
+    git add vllm
+    git commit -m "chore: bump vllm submodule to include new spec_decode logic"
+    git push
+    ```
+
+This ensures the main repository tracks the correct state of the `vllm` submodule.
+
+### Cloning the Repository
+
+Users cloning this repository for the first time need to initialize the submodule:
+
+```bash
+# 1. Clone the main repository
+git clone <your main repo URL>
+cd <repo-name>
+
+# 2. Initialize and update the submodule(s)
+git submodule update --init --recursive
+
+# 3. Install the submodule in editable mode
+pip install -e "vllm[dev]"
+```
+
+This ensures they get the exact version of the `vllm` fork specified by the main repository's commits.
 
 ---
 

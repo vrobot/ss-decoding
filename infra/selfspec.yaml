@@ -25,10 +25,11 @@ envs:                         # Added environment variables
 setup: |
   # --- All deps in one shot ---
   pip install \
-      transformers>=4.40 vllm>=0.4 \
+      transformers>=4.40 \
       torch torchvision \
       numpy pandas requests tqdm datasets nltk aiohttp \
       hf_transfer pyarrow bitsandbytes accelerate huggingface_hub
+  pip install -e ./vllm
 
   # Prefetch the model + quick smoke test
   python scripts/prefetch_model.py "$MODEL_NAME"
