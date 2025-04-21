@@ -1,0 +1,4 @@
+[submodule "vllm"]
+	path = vllm
+	url = git@github.com:aniltolwani/vllm.git
+	branch = llama4-early-exit
