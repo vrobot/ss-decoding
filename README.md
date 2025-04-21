@@ -14,6 +14,32 @@ We start tiny → iterate → land upstream PRs.
 
 ---
 
+## 0.5 Setup
+
+## 0.6 Cloud Setup with SkyPilot
+
+We use [SkyPilot](https://github.com/skypilot-org/skypilot) to manage cloud resources, specifically GCP spot instances with H100 GPUs. This gives us:
+
+* **Cost efficiency**: Spot instances are ~70% cheaper than on-demand
+* **Auto-recovery**: SkyPilot automatically resubmits jobs after preemptions
+* **Easy scaling**: One command to launch/stop clusters
+* **File sync**: Automatic code synchronization
+* **VS Code integration**: Easy remote development
+
+### Quick Start
+
+Run the following command:
+```bash
+sky launch -c llama4 infra/selfspec.yaml --env HF_TOKEN=$HF_TOKEN --env WANDB_API_KEY=$WANDB_API_KEY --idle-minutes-to-autostop 30
+```
+
+This will 
+* Provision a GCP spot instance with the specified GPU.
+* Set up the necessary environment, including syncing your local code to and from GCS.
+* Inject the provided Hugging Face and WandB tokens as environment variables.
+* Automatically stop the instance after 30 minutes of inactivity to save costs.
+
+
 ## 1 . Quick 90‑second demo
 
 ```bash

@@ -5,25 +5,41 @@ Everything assumes **conda env `llama4`**, **vLLM `nightly`** fork, **H100
 
 ---
 
-## 📦 Milestone 0 — Baseline & Bench Harness
+## 📦 Milestone 0 — Baseline & Bench Harness
 - [ ] **M0‑01 – clone + env**  
   ```bash
   git clone https://github.com/vllm-project/vllm.git && cd vllm && git checkout nightly
   pip install -e ".[dev]"
   ```
 - [ ] **M0‑02 – pull model** (`huggingface_hub.snapshot_download`)
-- [ ] **M0‑03 – add `scripts/bench.sh`** (wrap `benchmark_engine.py`, save JSON → `results/`)
+- [ ] **M0‑03 – add `scripts/bench.sh`** (wrap `benchmark_engine.py`, save JSON → `results/`)
 - [ ] **M0‑04 – run baseline**  
   ```bash
   # micro sanity first (8p/16g) catches shape mismatches fast
   ./scripts/bench.sh baseline_sanity 8 16 --seed 0
   # full run for headline numbers
   ./scripts/bench.sh baseline 32 128 --seed 0
-  # expect ~400 tok/s, record in README
+  # expect ~400 tok/s, record in README
   ```
 
 ---
 
+## ☁️ Infra Bootstrap — SkyPilot + GCP Spot
+
+> Goal: one‑line launch, auto‑retry after pre‑empt, code sync, VS Code SSH, cost guard.
+
+| ID | task | done |
+|----|------|------|
+|INF‑01|`pip install -U skypilot && sky check` (laptop)|✓|
+|INF‑02|Create **GCS bucket** `gs://selfspec-ckpt` (region = us‑central2)|✓|
+|INF‑03|Add `infra/selfspec.yaml`<br><sup>```yaml\nresources:\n  cloud: gcp\n  region: us-central2\n  accelerators: H100:1\n  use_spot: true\n  disk_size: 80\nfile_mounts:\n  /workspace: .\nstorage_mounts:\n  /ckpt: gs://selfspec-ckpt\nsetup: |\n  conda env create -f env/environment.yml -n llama4 || true\nrun: |\n  conda activate llama4\n  python main.py --resume /ckpt/latest.pt\n```</sup>|✓|
+|INF‑04|`sky launch -c llama4 infra/selfspec.yaml --env HF_TOKEN=$HF_TOKEN --env WANDB_API_KEY=$WANDB_API_KEY --idle-minutes-to-autostop 30` → VM online|✓|
+|INF‑05|`sky ssh dev -- -L 10022:localhost:22` then add<br>```\nHost skydev\n  HostName 127.0.0.1\n  Port 10022\n  User sky\n``` to `~/.ssh/config`; open VS Code **Remote‑SSH: skydev**|✓|
+
+---
+
+
+That's everything missing: **Spot H100 lifecycle wrapped, automatic file sync, VSCode SSH, cost cap, and CUDA ready**. Integrate, commit, and hack away.
 ## ⚙️ Milestone 1 — Layer‑Skip Draft Path
 - [ ] **M1‑05 – env flag `LAYERSKIP`**  
   *Patch* `vllm/engine/spec_decode.py` → expose `--layerskip` CLI flag (plumb into vLLM arg parser), if `layerskip>0` call `model.forward_partial(stop_layer=layerskip)`

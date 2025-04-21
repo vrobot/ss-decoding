@@ -1,0 +1,38 @@
+resources:
+  cloud: gcp
+  region: us-central1
+  accelerators: H100:1
+  use_spot: true
+  disk_size: 200    # 17 B weights + cache + env # Increased disk size
+
+workdir: .
+
+file_mounts:
+
+# Persist model downloads so new clusters don't re‑fetch from HF
+  /model_cache:             # Added model cache mount
+    source: gs://selfspec-ckpt
+    mode: MOUNT
+
+envs:                         # Added environment variables
+  HF_HOME: /model_cache/hub
+  TRANSFORMERS_CACHE: /model_cache/hub
+  MODEL_NAME: unsloth/Llama-4-Scout-17B-16E-unsloth-bnb-4bit
+  HF_TOKEN: Specify-via-CLI
+  WANDB_API_KEY: Specify-via-CLI
+
+# the conda env will auto be setup and activated
+setup: |
+  # --- All deps in one shot ---
+  pip install \
+      transformers>=4.40 vllm>=0.4 \
+      torch torchvision \
+      numpy pandas requests tqdm datasets nltk aiohttp \
+      hf_transfer pyarrow bitsandbytes accelerate huggingface_hub
+
+  # Prefetch the model + quick smoke test
+  python scripts/prefetch_model.py "$MODEL_NAME"
+  python scripts/smoke_test.py
+
+run: |
+  echo "Environment ready; nothing else to run yet."

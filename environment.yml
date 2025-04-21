@@ -1,0 +1,15 @@
+name: llama4
+channels:
+  - conda-forge
+  - pytorch            # pytorch channel pulls the CUDA builds
+dependencies:
+  - python>=3.10,<3.11          # 3.12 still rough for bitsandbytes
+  - pytorch>=2.2                # no space before the ≥
+  - pytorch-cuda=12.1           # 12.1 = current best on H100
+  - pip
+  - pip:
+      - vllm>=0.4
+      - transformers>=4.40
+      - accelerate
+      - huggingface_hub
+      - bitsandbytes            # needs CUDA ≥11.8
