@@ -1,0 +1,13 @@
+resources:
+  cloud: gcp
+  region: us-central1
+  image_id: projects/ml-images/global/images/c2-deeplearning-pytorch-2-4-cu124-v20250325-debian-11-py310
+  accelerators:
+    H100: 8
+  use_spot: true
+
+setup: |
+  sudo mkdir -p /mnt/ss-decoding
+  gcloud compute instances attach-disk $(hostname) --disk=ss-decoding --device-name=ss-decoding --zone=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/zone | awk -F/ '{print $NF}')
+  sudo mount /dev/disk/by-id/google-ss-decoding /mnt/ss-decoding
+  sudo chown $USER:$USER /mnt/ss-decoding
