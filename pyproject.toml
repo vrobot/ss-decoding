@@ -1,9 +1,14 @@
 [project]
-name = "inferenceoptimization-ssd"
+name = "ss-decoding"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "skypilot>=0.8.1",
+    "accelerate>=1.6.0",
+    "datasets>=3.5.0",
+    "gnureadline>=8.2.13",
+    "ipython>=9.1.0",
+    "torchvision>=0.22.0",
+    "transformers>=4.51.3",
 ]
