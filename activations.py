@@ -3,7 +3,7 @@ import torch
 from datasets import load_dataset
 
 BATCH_SIZE = 2
-NUM_PROMPTS = 16
+NUM_PROMPTS = 256
 
 dataset_name = "cnn_dailymail"
 config_name  = "3.0.0"
