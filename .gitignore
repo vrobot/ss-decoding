@@ -8,6 +8,7 @@ __pycache__/
 
 # model binaries
 *.pt
+*.pth
 
 # Distribution / packaging
 .Python

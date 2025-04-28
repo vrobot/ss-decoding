@@ -41,7 +41,7 @@ prompts = [
     for i in range(NUM_PROMPTS)
 ]
 
-input_ids = processor(text=prompts, return_tensors="pt", padding=True, padding_side="left").input_ids
+input_ids = processor(text=prompts, return_tensors="pt", padding=True, padding_side="left").input_ids.to("cuda")
 input_ids = input_ids.view(-1, BATCH_SIZE, input_ids.shape[-1])
 
 activations = {}
