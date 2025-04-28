@@ -9,7 +9,7 @@ NUM_PROMPTS = 2048
 dataset_name = "cnn_dailymail"
 config_name  = "3.0.0"
 train_ds = load_dataset(dataset_name, config_name, split="train")
-print(train_ds)
+
 # mmlu = load_dataset("cais/mmlu", "all")
 processor = AutoProcessor.from_pretrained("meta-llama/Llama-4-Scout-17B-16E-Instruct", cache_dir="/mnt/ss-decoding/models/Llama-4-Scout-17B-16E-Instruct/")
 model = AutoModelForImageTextToText.from_pretrained(
