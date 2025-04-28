@@ -2,9 +2,8 @@ from transformers import AutoProcessor, AutoModelForImageTextToText
 import torch
 from datasets import load_dataset
 
-NUM_LAYERS = 48
 BATCH_SIZE = 2
-NUM_PROMPTS = 2048
+NUM_PROMPTS = 16
 
 dataset_name = "cnn_dailymail"
 config_name  = "3.0.0"
@@ -47,7 +46,7 @@ input_ids = input_ids.view(-1, BATCH_SIZE, input_ids.shape[-1])
 
 activations = {}
 
-for i in [46, 47]:
+for i in range(len(model.language_model.model.layers)):
     submod = model.language_model.model.layers[i]
     hook = submod.register_forward_hook(make_hook(i))
 
