@@ -22,25 +22,14 @@ model.eval()
 
 def make_hook(layer_idx):
     def hook_fn(module, inp, out):
-        # print(out.shape)
-        chunk = out.view(-1, out.shape[-1]).detach().cpu()
+        h = out[0].detach().cpu().view(-1, out[0].shape[-1])
         key = f'post_attention_layernorm_{layer_idx}'
         if key not in activations:
-            # first time seeing this key, just store the tensor
-            activations[key] = chunk
+            activations[key] = h
         else:
-            # already exists, append along dim=0
-            activations[key] = torch.cat([activations[key], chunk], dim=0)
+            activations[key] = torch.cat([activations[key], h], dim=0)
     return hook_fn
 
-
-# PROMPT = (
-#     "Answer the following question by picking one of the choices given.\n"
-#     "Only output the content of the choice and nothing else. Give the actual content of the choice, not the index.\n"
-#     "Question: {question}\n"
-#     "Choices: {choices}\n"
-#     "Answer: "
-# )
 
 PROMPT = (
     "Summarize the highlights of the following article text:\n"
@@ -55,14 +44,19 @@ prompts = [
 
 input_ids = processor(text=prompts, return_tensors="pt", padding=True, padding_side="left").input_ids
 input_ids = input_ids.view(-1, BATCH_SIZE, input_ids.shape[-1])
-# test_input_ids = input_ids[:4]
 
 activations = {}
 
 for i in [46, 47]:
-    submod = model.language_model.model.layers[i].post_attention_layernorm
+    submod = model.language_model.model.layers[i]
     hook = submod.register_forward_hook(make_hook(i))
 
-out = torch.stack([(lambda b, i: (print(f"Batch {i}"), model.generate(b, max_new_tokens=128).cpu())[1])(batch, i) for i, batch in enumerate(input_ids)])
+outs = []
+for i, batch in enumerate(input_ids):
+    print(i)
+    out = model.generate(batch, max_new_tokens=128, do_sample=False)
+    outs.append(out)
+
+out = torch.stack(outs)
 torch.save(out, f"out_{NUM_PROMPTS}.pt")
 torch.save(activations, f"activations_{NUM_PROMPTS}.pt")
