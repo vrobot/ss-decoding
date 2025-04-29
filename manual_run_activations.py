@@ -10,39 +10,39 @@ model = AutoModelForImageTextToText.from_pretrained(
 )
 model.eval()
 
-activation = {}
+# activation = {}
 
-def hook(module, inp, out):
-    activation["h48"] = out[0].detach().cpu()
+# def hook(module, inp, out):
+#     activation["h48"] = out[0].detach().cpu()
 
-handle = model.language_model.model.layers[47].register_forward_hook(
-    hook
-)
+# handle = model.language_model.model.layers[47].register_forward_hook(
+#     hook
+# )
 
-prompt = "The meaning of life is "
-def compare(prompt):
-    input_ids = processor(text=prompt, return_tensors="pt").input_ids.to(model.device)
-    output = model.generate(input_ids, max_new_tokens=1, do_sample=False)
-    print("auto generated:", processor.decode(output[0]))
-    h48 = activation["h48"][0][-1][:].view(1, 1, 5120)
-    with torch.no_grad():
-        h_norm = lm_model.language_model.model.norm(h48)    
-        logits = lm_model.language_model.lm_head(h_norm)
-        next_id = logits[:, -1, :].argmax(-1)
-    print("manual generated:", processor.decode(next_id))
-    prompt += processor.decode(next_id)
-    return prompt
+# prompt = "The meaning of life is "
+# def compare(prompt):
+#     input_ids = processor(text=prompt, return_tensors="pt").input_ids.to(model.device)
+#     output = model.generate(input_ids, max_new_tokens=1, do_sample=False)
+#     print("auto generated:", processor.decode(output[0]))
+#     h48 = activation["h48"][0][-1][:].view(1, 1, 5120)
+#     with torch.no_grad():
+#         h_norm = lm_model.language_model.model.norm(h48)    
+#         logits = lm_model.language_model.lm_head(h_norm)
+#         next_id = logits[:, -1, :].argmax(-1)
+#     print("manual generated:", processor.decode(next_id))
+#     prompt += processor.decode(next_id)
+#     return prompt
 
 
-for _ in range(10):
-    prompt = compare(prompt)
+# for _ in range(10):
+#     prompt = compare(prompt)
 
 
 activations_47 = torch.load("activations/post_attention_layernorm_47.pt")
-activations_46 = torch.load("activations/post_attention_layernorm_46.pt")
-activations_45 = torch.load("activations/post_attention_layernorm_45.pt")
+# activations_46 = torch.load("activations/post_attention_layernorm_46.pt")
+# activations_45 = torch.load("activations/post_attention_layernorm_45.pt")
 activations_40 = torch.load("activations/post_attention_layernorm_40.pt")
-activations_35 = torch.load("activations/post_attention_layernorm_35.pt")
+# activations_35 = torch.load("activations/post_attention_layernorm_35.pt")
 out = torch.load("activations/outs_256.pt")
 
 def compare(idx):
@@ -56,6 +56,11 @@ def compare(idx):
         logits = model.language_model.lm_head(h_norm)
         next_id_47 = logits[:, -1, :].argmax(-1)
         print(idx, processor.decode(next_id_48), processor.decode(next_id_47), processor.decode(out[-1][-1][idx]))
+
+act_map = ActivationMapping(dim=5120)
+act_map.load_state_dict(torch.load("activations/activation_mapping40to47.pth"))
+act_map.eval()
+act_map = act_map.to(torch.bfloat16)
 
 orig_count_correct = 0
 count_correct = 0
@@ -79,9 +84,8 @@ def compare(idx):
             orig_count_correct += 1
         if next_id_47 == p_next_id:
             count_correct += 1
-        print(idx, processor.decode(out[-1][-1][idx]), processor.decode(next_id_47), processor.decode(p_next_id), processor.decode(next_id_40))
+        print(idx, processor.decode(next_id_47), processor.decode(p_next_id), processor.decode(next_id_40))
 
 
-act_map = ActivationMapping(dim=5120)
-act_map.load_state_dict(torch.load("activations/activation_mapping40to47.pth"))
-act_map.eval()
+for i in range(100):
+    compare(-i)

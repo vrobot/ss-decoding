@@ -27,6 +27,20 @@ class ActivationMapping(nn.Module):
     def forward(self, x):
         return self.proj(x)
 
+class ActivationMappingBigger(nn.Module):
+    def __init__(self, dim, hidden_mult=4):
+        super().__init__()
+        h = dim * hidden_mult
+        self.net = nn.Sequential(
+            nn.Linear(dim, h),
+            nn.ReLU(inplace=True),
+            nn.Linear(h, h),
+            nn.ReLU(inplace=True),
+            nn.Linear(h, dim),
+        )
+    def forward(self, x):
+        return self.net(x)
+
 model = ActivationMapping(dim=activations_40.shape[1]).to(device)
 
 optimizer = optim.Adam(model.parameters(), lr=1e-5)
