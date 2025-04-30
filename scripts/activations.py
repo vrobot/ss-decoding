@@ -1,8 +1,12 @@
 from transformers import AutoProcessor, AutoModelForImageTextToText   
 import torch
 from datasets import load_dataset
+import time
 
-BATCH_SIZE = 2
+torch.backends.cudnn.benchmark = True
+torch.backends.cuda.matmul.allow_tf32 = True
+
+BATCH_SIZE = 1
 NUM_PROMPTS = 256
 
 dataset_name = "cnn_dailymail"
@@ -21,8 +25,8 @@ model.eval()
 
 def make_hook(layer_idx):
     def hook_fn(module, inp, out):
-        h = out[0].detach().cpu().view(-1, out[0].shape[-1])
-        key = f'post_attention_layernorm_{layer_idx}'
+        h = out[0].detach().view(-1, out[0].shape[-1])
+        key = f'layer_{layer_idx}'
         if key not in activations:
             activations[key] = h
         else:
@@ -41,21 +45,25 @@ prompts = [
     for i in range(NUM_PROMPTS)
 ]
 
-input_ids = processor(text=prompts, return_tensors="pt", padding=True, padding_side="left").input_ids.to("cuda")
-input_ids = input_ids.view(-1, BATCH_SIZE, input_ids.shape[-1])
+# input_ids = processor(text=prompts, return_tensors="pt").input_ids.to("cuda")
+# input_ids = input_ids.view(-1, 1, input_ids.shape[-1])
 
 activations = {}
 
-for i in range(len(model.language_model.model.layers)):
+for i in [11, 23, 35, 41, 47]:
     submod = model.language_model.model.layers[i]
     hook = submod.register_forward_hook(make_hook(i))
 
 outs = []
-for i, batch in enumerate(input_ids):
+for i, prompt in enumerate(prompts):
+    start = time.time()
     print(i)
-    out = model.generate(batch, max_new_tokens=128, do_sample=False)
+    input_ids = processor(text=prompt, return_tensors="pt").input_ids.to("cuda")
+    with torch.inference_mode():
+        out = model.generate(input_ids, max_new_tokens=64, do_sample=False)
+    end = time.time()
+    print(f"Time taken: {end - start} seconds")
     outs.append(out)
 
-out = torch.stack(outs)
-torch.save(out, f"out_{NUM_PROMPTS}.pt")
-torch.save(activations, f"activations_{NUM_PROMPTS}.pt")
+torch.save(outs, f"out_nopadding_{NUM_PROMPTS}.pt")
+torch.save(activations, f"activations_nopadding_{NUM_PROMPTS}.pt")

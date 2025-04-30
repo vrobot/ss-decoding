@@ -7,11 +7,11 @@ from torch.cuda.amp import autocast
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-activations_47 = torch.load("activations/post_attention_layernorm_47.pt").to(device)
-activations_40 = torch.load("activations/post_attention_layernorm_40.pt").to(device)
+activations_47 = torch.load("/mnt/ss-decoding/activations/post_attention_layernorm_47.pt").to(device)
+activations_11 = torch.load("/mnt/ss-decoding/activations/post_attention_layernorm_11.pt").to(device)
 
 
-Xs = activations_40
+Xs = activations_11
 Ys = activations_47
 
 n = int(Xs.shape[0]*0.8)
@@ -20,15 +20,15 @@ Ys_train = Ys[:n]
 Xs_val = Xs[n:]
 Ys_val = Ys[n:]
 
-class ActivationMapping(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.proj = nn.Linear(dim, dim)
-    def forward(self, x):
-        return self.proj(x)
+# class ActivationMapping(nn.Module):
+#     def __init__(self, dim):
+#         super().__init__()
+#         self.proj = nn.Linear(dim, dim)
+#     def forward(self, x):
+#         return self.proj(x)
 
 class ActivationMappingBigger(nn.Module):
-    def __init__(self, dim, hidden_mult=4):
+    def __init__(self, dim, hidden_mult=8):
         super().__init__()
         h = dim * hidden_mult
         self.net = nn.Sequential(
@@ -41,7 +41,7 @@ class ActivationMappingBigger(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-model = ActivationMapping(dim=activations_40.shape[1]).to(device)
+model = ActivationMappingBigger(dim=activations_11.shape[1]).to(device)
 
 optimizer = optim.Adam(model.parameters(), lr=1e-5)
 criterion = nn.MSELoss()

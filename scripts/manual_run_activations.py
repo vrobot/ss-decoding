@@ -57,6 +57,14 @@ def compare(idx):
         next_id_47 = logits[:, -1, :].argmax(-1)
         print(idx, processor.decode(next_id_48), processor.decode(next_id_47), processor.decode(out[-1][-1][idx]))
 
+class ActivationMapping(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.proj = nn.Linear(dim, dim)
+        
+    def forward(self, x):
+        return self.proj(x)
+
 act_map = ActivationMapping(dim=5120)
 act_map.load_state_dict(torch.load("activations/activation_mapping40to47.pth"))
 act_map.eval()
