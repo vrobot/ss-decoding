@@ -12,11 +12,12 @@ class ActivationMapping(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(dim, h),
             nn.ReLU(inplace=True),
+            nn.Dropout(0.5),
             nn.Linear(h, h),
             nn.ReLU(inplace=True),
+            nn.Dropout(0.5),
             nn.Linear(h, dim),
         )
-
     def forward(self, x):
         return self.net(x)
 
@@ -58,8 +59,10 @@ def validate_out_path(ctx, param, value):
               help='Path to the activations file')
 @click.option('--out-path', default='', type=click.Path(), callback=validate_out_path,
               help='Output path for saving results (required when using --no-mse)')
-@click.option('--layer-idx', required=True, type=int,
+@click.option('--layer-source', required=True, type=int,
               help='Layer index to use for input features')
+@click.option('--layer-target', required=True, type=int,
+              help='Layer index to use for output features')
 @click.option('--batch-size', default=8192, type=int,
               help='Batch size')
 @click.option('--num-epochs', default=30000, type=int,
@@ -69,7 +72,7 @@ def validate_out_path(ctx, param, value):
 @click.option('--save', required=True, type=click.Path(),
               help='Path to save the model')
 
-def main(mse, activations_path, out_path, layer_idx, batch_size, num_epochs, lr, save):
+def main(mse, activations_path, out_path, layer_source, layer_target, batch_size, num_epochs, lr, save):
     """Training script for processing activations."""
     # Set device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -78,12 +81,12 @@ def main(mse, activations_path, out_path, layer_idx, batch_size, num_epochs, lr,
     activations = torch.load(activations_path)
 
     # Get input features
-    Xs = activations[f"layer_{layer_idx}"]
+    Xs = activations[f"layer_{layer_source}"]
     
     # If using MSE, true examples are layer 48 hidden state
     # If using NLL, true examples are output of the model
     if mse:
-        Ys = activations[f"layer_47"]
+        Ys = activations[f"layer_{layer_target}"]
         criterion = nn.MSELoss()
     else:
         from transformers.models.llama4.modeling_llama4 import Llama4TextRMSNorm
@@ -93,7 +96,7 @@ def main(mse, activations_path, out_path, layer_idx, batch_size, num_epochs, lr,
         norm = Llama4TextRMSNorm(cfg.text_config.hidden_size, eps=cfg.text_config.rms_norm_eps).eval()
         norm.load_state_dict(ckpt['norm'])
         norm.to(device)
-        lm_head = nn.Linear(cfg.text_config.hidden_size, cfg.text_config.vocab_size, bias=False).to(device).eval()
+        lm_head = nn.Linear(cfg.text_config.hidden_size, cfg.text_config.vocab_size, bias=False).eval()
         lm_head.load_state_dict(ckpt['head'])
         lm_head.to(device)
         Ys = torch.load(out_path)
