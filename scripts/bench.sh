@@ -13,7 +13,7 @@ Required:
 
 Options:
   -p, --num-prompts N   number of prompts (default: 64)
-  -w, --warmup N        warm‑up iterations (default: 2)
+  -w, --warmup N        warm-up iterations (default: 2)
   --dataset NAME        forwarded to benchmark_engine (--dataset ...)
   --preset NAME         quick|tiny fill common params (overrides above)
   -h, --help            this message
