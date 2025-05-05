@@ -161,7 +161,7 @@ h1 = layer.register_forward_pre_hook(pre,  with_kwargs=True)
 h2 = layer.register_forward_hook(post)    # after-forward hook
 
 with torch.no_grad():
-    auto_out = model(ids, output_hidden_states=True, use_cache=False)       # one ordinary forward pass
+    auto_out = model.generate(ids, do_sample=False, max_new_tokens=64, output_hidden_states=True, use_cache=False)       # one ordinary forward pass
 
 h1.remove(); h2.remove()                  # cleanup
 

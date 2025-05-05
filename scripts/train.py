@@ -2,50 +2,39 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from torch.cuda.amp import autocast
+from torch.cuda.amp import autocast, GradScaler
 import click
 
 class ActivationMapping(nn.Module):
-    def __init__(self, dim, hidden_mult=8):
+    def __init__(self, dim):
         super().__init__()
-        h = dim * hidden_mult
-        self.net = nn.Sequential(
-            nn.Linear(dim, h),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.5),
-            nn.Linear(h, h),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.5),
-            nn.Linear(h, dim),
-        )
+        self.proj = nn.Linear(dim, dim, bias=True)
+        nn.init.eye_(self.proj.weight)    # start as identity
+        nn.init.zeros_(self.proj.bias)
     def forward(self, x):
-        return self.net(x)
+        return x + self.proj(x)           # residual
 
 def get_train_val_split(Xs, Ys):
     perm = torch.randperm(Xs.shape[0])
     Xs = Xs[perm]
     Ys = Ys[perm]
-    n = int(Xs.shape[0]*0.8)
-    Xs_train = Xs[:n]
-    Ys_train = Ys[:n]
-    Xs_val = Xs[n:]
-    Ys_val = Ys[n:]
-    return Xs_train, Ys_train, Xs_val, Ys_val
+    n = int(Xs.shape[0] * 0.8)
+    return Xs[:n], Ys[:n], Xs[n:], Ys[n:]
 
 def get_val_loss(model, Xs_val, Ys_val, mse, criterion, batch_size, norm=None, lm_head=None):
     idx = torch.randint(0, Xs_val.shape[0], (batch_size,))
-    Xs_val = Xs_val[idx]
-    Ys_val = Ys_val[idx]
+    Xs_batch = Xs_val[idx]
+    Ys_batch = Ys_val[idx]
     with torch.no_grad():
         with autocast(dtype=torch.bfloat16):
-            outputs = model(Xs_val)
+            outputs = model(Xs_batch)
             if mse:
-                loss = criterion(outputs, Ys_val)
+                loss = criterion(outputs, Ys_batch)
             else:
-                h_norm = norm(Xs_val)
+                h_norm = norm(Xs_batch)
                 logits = lm_head(h_norm)
-                log_softmax = F.log_softmax(logits, dim=-1)
-                loss = criterion(log_softmax, Ys_val)
+                log_sm = F.log_softmax(logits, dim=-1)
+                loss = criterion(log_sm, Ys_batch)
     return loss.item()
 
 def validate_out_path(ctx, param, value):
@@ -54,111 +43,79 @@ def validate_out_path(ctx, param, value):
     return value
 
 @click.command()
-@click.option('--mse/--no-mse', default=True, help='Use MSE loss if set, otherwise use different loss')
+@click.option('--mse/--no-mse', default=True, help='Use MSE loss if set, otherwise use NLL')
 @click.option('--activations-path', required=True, type=click.Path(exists=True),
               help='Path to the activations file')
 @click.option('--out-path', default='', type=click.Path(), callback=validate_out_path,
-              help='Output path for saving results (required when using --no-mse)')
+              help='Path to targets when using --no-mse')
 @click.option('--layer-source', required=True, type=int,
               help='Layer index to use for input features')
 @click.option('--layer-target', required=True, type=int,
               help='Layer index to use for output features')
-@click.option('--batch-size', default=8192, type=int,
-              help='Batch size')
-@click.option('--num-epochs', default=30000, type=int,
-              help='Number of epochs')
-@click.option('--lr', default=1e-5, type=float,
-              help='Learning rate')
-@click.option('--save', required=True, type=click.Path(),
-              help='Path to save the model')
-
-def main(mse, activations_path, out_path, layer_source, layer_target, batch_size, num_epochs, lr, save):
-    """Training script for processing activations."""
-    # Set device
+@click.option('--batch-size', default=8192, type=int, help='Batch size')
+@click.option('--num-epochs', default=30000, type=int, help='Number of epochs')
+@click.option('--lr', default=1e-5, type=float, help='Learning rate')
+@click.option('--save', required=True, type=click.Path(), help='Path to save the model')
+def main(mse, activations_path, out_path, layer_source, layer_target,
+         batch_size, num_epochs, lr, save):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    # Load activations
     activations = torch.load(activations_path)
+    Xs = activations[layer_source].squeeze(0)
 
-    # Get input features
-    Xs = activations[f"layer_{layer_source}"]
-    
-    # If using MSE, true examples are layer 48 hidden state
-    # If using NLL, true examples are output of the model
     if mse:
-        Ys = activations[f"layer_{layer_target}"]
+        Ys = activations[layer_target].squeeze(0)
         criterion = nn.MSELoss()
     else:
         from transformers.models.llama4.modeling_llama4 import Llama4TextRMSNorm
         from transformers import AutoConfig
         ckpt = torch.load("/mnt/ss-decoding/clean_activations/norm_and_head.pth")
-        cfg = AutoConfig.from_pretrained("meta-llama/Llama-4-Scout-17B-16E-Instruct")  
-        norm = Llama4TextRMSNorm(cfg.text_config.hidden_size, eps=cfg.text_config.rms_norm_eps).eval()
+        cfg = AutoConfig.from_pretrained("meta-llama/Llama-4-Scout-17B-16E-Instruct")
+        norm = Llama4TextRMSNorm(cfg.text_config.hidden_size,
+                                 eps=cfg.text_config.rms_norm_eps).eval().to(device)
         norm.load_state_dict(ckpt['norm'])
-        norm.to(device)
-        lm_head = nn.Linear(cfg.text_config.hidden_size, cfg.text_config.vocab_size, bias=False).eval()
+        lm_head = nn.Linear(cfg.text_config.hidden_size,
+                            cfg.text_config.vocab_size, bias=False).eval().to(device)
         lm_head.load_state_dict(ckpt['head'])
-        lm_head.to(device)
         Ys = torch.load(out_path)
         criterion = nn.NLLLoss()
-    
-    # breakpoint()
+
     Xs_train, Ys_train, Xs_val, Ys_val = get_train_val_split(Xs, Ys)
-    Xs_train = Xs_train.to(device)
-    Ys_train = Ys_train.to(device)
-    Xs_val = Xs_val.to(device)
-    Ys_val = Ys_val.to(device)
+    Xs_train, Ys_train = Xs_train.to(device), Ys_train.to(device)
+    Xs_val, Ys_val = Xs_val.to(device), Ys_val.to(device)
 
-    # some sanity checks
-    # idx = torch.randint(0, Xs_train.shape[0], (batch_size,))
-    # Xs = Xs_train[idx].to(device)
-    # Ys = Ys_train[idx].to(device)
-    # h_norm = norm(Xs)
-    # logits = lm_head(h_norm)
-    # log_probs = F.log_softmax(logits, dim=-1)
-    # nll = torch.sum(log_probs[torch.arange(batch_size), Ys])
-    # print(nll/batch_size)
-    # breakpoint()
-
-    # Initialize model and optimizer
     model = ActivationMapping(dim=Xs.shape[1]).to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
-
+    scaler = GradScaler()
 
     for epoch in range(num_epochs):
-        if epoch > 500:
-            optimizer = optim.Adam(model.parameters(), lr=3e-5)
         idx = torch.randint(0, Xs_train.shape[0], (batch_size,))
-        Xs = Xs_train[idx]
-        Ys = Ys_train[idx]
+        Xb = Xs_train[idx]
+        Yb = Ys_train[idx]
+
         optimizer.zero_grad()
-
         with autocast(dtype=torch.bfloat16):
-            # Forward pass
-            outputs = model(Xs)
+            out = model(Xb)
             if mse:
-                loss = criterion(outputs, Ys)
+                loss = criterion(out, Yb)
             else:
-                h_norm = norm(Xs)
+                h_norm = norm(Xb)
                 logits = lm_head(h_norm)
-                log_softmax = F.log_softmax(logits, dim=-1)
-                loss = criterion(log_softmax, Ys)
+                loss = criterion(F.log_softmax(logits, dim=-1), Yb)
 
-        # Backward pass and optimization
-        loss.backward()
-        optimizer.step()
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
         if epoch % 100 == 0:
             if mse:
-                val_loss = get_val_loss(model, Xs_val, Ys_val, mse, criterion, batch_size)
+                v_loss = get_val_loss(model, Xs_val, Ys_val, True, criterion, batch_size)
             else:
-                val_loss = get_val_loss(model, Xs_val, Ys_val, mse, criterion, batch_size, norm, lm_head)
-            print(f"Epoch {epoch} train loss: {loss.item()} val loss: {val_loss}")
+                v_loss = get_val_loss(model, Xs_val, Ys_val, False, criterion,
+                                      batch_size, norm, lm_head)
+            print(f"Epoch {epoch} — train loss: {loss.item():.6f}, val loss: {v_loss:.6f}")
 
     torch.save(model.state_dict(), save)
 
 if __name__ == "__main__":
     main()
-
-
-
