@@ -1,0 +1,41 @@
+- llama 3 repro
+	- finished -> L12 acceptance == 43%
+	- L8 acceptance == 35%
+- consistency across datasets
+	- cnnmail
+		- **Venkat -> tomorrow**
+	- humaneval
+- full layer sweep
+	- L1-48
+		- acceptance rate per layer
+		- expectation: nearly monotonic increase
+		- middle layers may have particularly poor acceptance rate
+		- best ratio of acceptance / model depth early ~= L12
+			- this is effectively our speedup ratio
+	- **Anil -- tonight**
+- infra housekeeping
+	- just two instances for now
+	- maybe we need a slurm style launcher if we run bigger sweeps
+- quantized
+	- unsloth 4 bit
+		- https://huggingface.co/unsloth/Llama-4-Scout-17B-16E-unsloth-bnb-4bit/tree/main
+	- does quantizing effect the ratio of accepted tokens?
+		- **Venkat -> tomorrow**
+	- can we use a quantized drafter and full weight verifier?
+		- this is tricky, need them both loaded at the same time
+- Entropy gate
+	- step 1 is to collect varentropy per token and correlate that with acceptance 
+		- **Anil -> wednesday**
+- number of drafted tokens
+	- https://www.snowflake.com/en/engineering-blog/fast-speculative-decoding-vllm-arctic/
+	- play around with sweeps + using varentropy to pick number of drafted tokens
+- increase acceptance rate
+	- train a head on normed activations
+	- drop lambda to 1e-5 for ridge regression
+- **Self-spec loop** – let layer-8 head propose, layer-12 verify; ~55 % accept.
+	- skip partial layers, etc.
+	- still need to make a sweep plan here
+- **integrate to vllm -> Tentatively EOW**
+	- **model.forward_partial(stop_layer=L)**
+	- inference flag --skip-layer 12
+- 
