@@ -4,7 +4,12 @@ from datasets import load_dataset
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--layer', type=int, default=12)        # drafter layer
+parser.add_argument(
+    "--layer",
+    type=int,
+    nargs="+",
+    default=[12],
+)     # drafter layer
 parser.add_argument('--n',     type=int, default=50_000)
 args = parser.parse_args()
 
@@ -16,27 +21,41 @@ model = AutoModelForCausalLM.from_pretrained(
             torch_dtype=torch.bfloat16,      # still fine – weights dequantised on the fly
             device_map="auto",
             attn_implementation="flash_attention_2",
-            trust_remote_code=True)          # Unsloth models need this
+            trust_remote_code=True,
+            cache_dir="/mnt/ss-decoding/models/meta-llama/Llama-4-Scout-17B-16E"
+)          # Unsloth models need this
 model.eval()
-DATA_FILE = "/mnt/ss-decoding/datasets/sharegpt/ShareGPT_V3_unfiltered_cleaned_split.json"
-TRAIN_ROWS = "train[:50000]"
-ds = load_dataset("json", data_files=DATA_FILE, split=TRAIN_ROWS)
+
+dataset_name = "cnn_dailymail"
+config_name  = "3.0.0"
+ds = load_dataset(dataset_name, config_name, split=f"train[:{args.n}]")
+
+PROMPT = (
+    "Summarize the following article text\n"
+    "{text}\n"
+    "Summary: "
+)
 
 HIDDEN, LOGITS = [], []
 with torch.no_grad():
     for row in tqdm(ds, total=args.n):
-        conv = row["conversations"]
-        if not conv:
-            continue
-        prompt = conv[0]["value"]
+        prompt = PROMPT.format(text=row['article'])
         ids = tok(prompt, return_tensors="pt",
                   truncation=True, max_length=256).to("cuda")
-
         out = model(**ids, use_cache=False, output_hidden_states=True)
-        h    = out.hidden_states[args.layer+1][:,-1,:].float().cpu()  # (1,5120)
-        log  = out.logits[:, -1, :].float().cpu()                     # (1,V)
-        HIDDEN.append(h.squeeze(0));  LOGITS.append(log.squeeze(0))
-        if len(HIDDEN) == args.n: break
+        hs = torch.stack(out.hidden_states, dim=0)
+        layers = torch.tensor(args.layer)
+        h    = hs[layers, 0, :, :].float().cpu()  # (L, 256, 5120)
+        log  = out.logits[0, :, :].float().cpu()                     # (512, V)
+        HIDDEN.append(h);  LOGITS.append(log)
 
-torch.save({"X": torch.stack(HIDDEN), "Y": torch.stack(LOGITS)},
-           f"lsq_data_l{args.layer}.pt")
+print(len(HIDDEN), len(LOGITS))
+X = torch.cat(HIDDEN, dim=1)
+Y = torch.cat(LOGITS, dim=0)
+
+# numpy storage is more efficient
+X_np = X.cpu().numpy()
+Y_np = Y.cpu().numpy()
+for i, layer in enumerate(args.layer):
+    torch.save(X_np[i, :, :], f"lsq_data/X_l{layer}.bin")
+torch.save(Y_np, f"lsq_data/Y.bin")
