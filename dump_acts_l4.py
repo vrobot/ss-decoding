@@ -2,6 +2,8 @@ import torch, argparse, json
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset
 from tqdm import tqdm
+import h5py
+import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -36,26 +38,38 @@ PROMPT = (
     "Summary: "
 )
 
-HIDDEN, LOGITS = [], []
-with torch.no_grad():
-    for row in tqdm(ds, total=args.n):
-        prompt = PROMPT.format(text=row['article'])
-        ids = tok(prompt, return_tensors="pt",
-                  truncation=True, max_length=256).to("cuda")
-        out = model(**ids, use_cache=False, output_hidden_states=True)
-        hs = torch.stack(out.hidden_states, dim=0)
-        layers = torch.tensor(args.layer)
-        h    = hs[layers, 0, :, :].float().cpu()  # (L, 256, 5120)
-        log  = out.logits[0, :, :].float().cpu()                     # (512, V)
-        HIDDEN.append(h);  LOGITS.append(log)
+logits_size = 202048
+hidden_size = 5120
+L = len(args.layer)
 
-print(len(HIDDEN), len(LOGITS))
-X = torch.cat(HIDDEN, dim=1)
-Y = torch.cat(LOGITS, dim=0)
+with h5py.File("lsq_data.h5", "w") as f:
+    X = f.create_dataset("X",
+                         shape=(L, 0, hidden_size),
+                         maxshape=(L, None, hidden_size),
+                         dtype="float32",
+                         chunks=(L,1,hidden_size))
+    Y = f.create_dataset("Y",
+                         shape=(0, logits_size),
+                         maxshape=(None, logits_size),
+                         dtype="float32",
+                         chunks=(1,logits_size))
+    with torch.no_grad():
+        for row in tqdm(ds, total=args.n):
+            prompt = PROMPT.format(text=row['article'])
+            ids = tok(prompt, return_tensors="pt",
+                    truncation=True, max_length=256).to("cuda")
+            out = model(**ids, use_cache=False, output_hidden_states=True)
+            hs = torch.stack(out.hidden_states, dim=0)
+            layers = torch.tensor(args.layer)
+            h    = hs[layers, 0, :, :].float().cpu()  # (L, 256, 5120)
+            log  = out.logits[0, :, :].float().cpu()  # (512, V)
+            h_np   = h.numpy()
+            log_np = log.numpy()
+            X.resize((L, X.shape[1] + h_np.shape[1], hidden_size))
+            X[:, -h_np.shape[1]:, :] = h_np
+            Y.resize((Y.shape[0] + log_np.shape[0], logits_size))
+            Y[-log_np.shape[0]:, :]  = log_np
 
-# numpy storage is more efficient
-X_np = X.cpu().numpy()
-Y_np = Y.cpu().numpy()
-for i, layer in enumerate(args.layer):
-    torch.save(X_np[i, :, :], f"lsq_data/X_l{layer}.bin")
-torch.save(Y_np, f"lsq_data/Y.bin")
+    for i, layer in enumerate(args.layer):
+        np.save(f"lsq_data/X_l{layer}.npy", X[i,:,:])
+    np.save("lsq_data/Y.npy", Y)
