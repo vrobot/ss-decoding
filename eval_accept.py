@@ -10,7 +10,7 @@ args = parser.parse_args()
 
 Ws = []
 for i, layer in enumerate(args.layer):
-    Ws.append(torch.load(f"lsq_data/weights/ee_head_l{layer}.pt", map_location = "cuda"))
+    Ws.append(torch.load(f"lsq_data/weights/ee_head_l{layer}.pt", map_location = "cpu"))
     Ws[i] = Ws[i].to(torch.bfloat16)
 
 MODEL_ID = "meta-llama/Llama-4-Scout-17B-16E"
@@ -43,12 +43,10 @@ with torch.no_grad():
         for i, layer in enumerate(args.layer):
             h = out.hidden_states[i+1][:,-1,:]
             dev = h.device
-            draft = (h @ Ws[i].to(dev).T).float() 
-            gold = out.logits[:,-1,:].argmax(-1)
+            draft = (h.to('cpu') @ Ws[i].T).float() 
+            gold = out.logits[:,-1,:].argmax(-1).to('cpu')
             pred = draft.argmax(-1)
             hits[i] += (pred == gold).sum().item()
-            if tot > 0:
-                print(hits[i], tot, hits[i]/tot)
         tot += 1
 acc = [hits[i]/tot for i in range(len(args.layer))]
 
