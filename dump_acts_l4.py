@@ -28,20 +28,17 @@ model = AutoModelForCausalLM.from_pretrained(
 )          # Unsloth models need this
 model.eval()
 
-dataset_name = "cnn_dailymail"
-config_name  = "3.0.0"
-ds = load_dataset(dataset_name, config_name, split=f"train[:{args.n}]")
-
-PROMPT = (
-    "Summarize the following article text\n"
-    "{text}\n"
-    "Summary: "
-)
+DATA_FILE = "/mnt/ss-decoding/datasets/sharegpt/ShareGPT_V3_unfiltered_cleaned_split.json"
+TRAIN_ROWS = f"train[:{args.n}]"
+ds = load_dataset("json", data_files=DATA_FILE, split=TRAIN_ROWS)
 
 HIDDEN, LOGITS = [], []
 with torch.no_grad():
     for row in tqdm(ds, total=args.n):
-        prompt = PROMPT.format(text=row['article'])
+        conv = row["conversations"]
+        if not conv:
+            continue
+        prompt = conv[0]["value"]
         ids = tok(prompt, return_tensors="pt",
                 truncation=True, max_length=256).to("cuda")
         out = model(**ids, use_cache=False, output_hidden_states=True)
