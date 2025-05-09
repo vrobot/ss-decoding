@@ -32,6 +32,12 @@ model  = AutoModelForCausalLM.from_pretrained(
 )
 model.eval()
 
+PROMPT = (
+    "Summarize the highlights of the following article text:\n"
+    "{text}\n"
+    "Summary: "
+)
+
 if args.dataset == "s":
     DATA_FILE = "/mnt/ss-decoding/datasets/sharegpt/ShareGPT_V3_unfiltered_cleaned_split.json"
     TRAIN_ROWS = f"train[50000:{50000+args.n}]"
@@ -47,10 +53,13 @@ hits=[0]*len(args.layer)
 tot=0
 with torch.no_grad():
     for row in tqdm(ds, total=args.n):
-        conv = row["conversations"]
-        if not conv:
-            continue
-        prompt = conv[0]["value"]
+        if args.dataset == "s":
+            conv = row["conversations"]
+            if not conv:
+                continue
+            prompt = conv[0]["value"]
+        elif args.dataset == "c":
+            prompt = PROMPT.format(text=row["article"])
         ids = tok(prompt,
                   return_tensors="pt",
                   truncation=True, max_length=256).to("cuda")
