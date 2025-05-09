@@ -8,10 +8,15 @@ parser.add_argument("--layer", type=int, nargs="+", default=[12])
 parser.add_argument("--n", type=int, default=5_000)
 args = parser.parse_args()
 
+n_gpus = torch.cuda.device_count()
+devices = [f"cuda:{i}" for i in range(n_gpus)]
+
 Ws = []
-for i, layer in enumerate(args.layer):
-    Ws.append(torch.load(f"lsq_data/weights/ee_head_l{layer}.pt", map_location = "cpu"))
-    Ws[i] = Ws[i].to(torch.bfloat16)
+for idx, layer in enumerate(args.layer):
+    dev = devices[idx % n_gpus]
+    W = torch.load(f"lsq_data/weights/ee_head_l{layer}.pt",
+                   map_location=dev)
+    Ws.append(W.to(torch.bfloat16))
 
 MODEL_ID = "meta-llama/Llama-4-Scout-17B-16E"
 tok    = AutoTokenizer.from_pretrained(MODEL_ID, padding_side="left")
@@ -43,8 +48,8 @@ with torch.no_grad():
         for i, layer in enumerate(args.layer):
             h = out.hidden_states[i+1][:,-1,:]
             dev = h.device
-            draft = (h.to('cpu') @ Ws[i].T).float() 
-            gold = out.logits[:,-1,:].argmax(-1).to('cpu')
+            draft = (h @ Ws[i].to(dev).T).float() 
+            gold = out.logits[:,-1,:].argmax(-1)
             pred = draft.argmax(-1)
             hits[i] += (pred == gold).sum().item()
         tot += 1
