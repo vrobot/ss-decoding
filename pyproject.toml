@@ -6,5 +6,6 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "huggingface-hub>=0.31.2",
+    "matplotlib>=3.10.3",
     "skypilot>=0.8.1",
 ]
