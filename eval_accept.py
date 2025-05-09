@@ -2,6 +2,8 @@ import torch, argparse, json
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset
 from tqdm import tqdm
+import json
+import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--layer", type=int, nargs="+", default=[12])
@@ -57,3 +59,24 @@ acc = [hits[i]/tot for i in range(len(args.layer))]
 
 for i, layer in enumerate(args.layer):
     print(f"L{layer} accept-rate: {acc[i]:6.2%}")
+
+out = {
+    "hits": hits,
+    "acc": acc,
+    "tot": tot,
+    "layers": args.layer,
+    "n": args.n
+}
+
+out_file = "accept_rate_" + "_".join(map(str, args.layer)) + f"_n{args.n}.json"
+
+with open(f"lsq_data/{out_file}", "w") as f:
+    json.dump(out, f)
+
+plt.figure(figsize=(10, 6))
+plt.plot(args.layer, acc, marker='o', linestyle='-', color='b')
+plt.xlabel('Layer')
+plt.ylabel('Accept Rate')
+plt.title(f'Accept Rate by Layer')
+plt.savefig(f"lsq_data/accept_rate_{'_'.join(map(str, args.layer))}_n{args.n}.png")
+plt.close()
