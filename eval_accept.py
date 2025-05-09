@@ -2,32 +2,81 @@ import torch, argparse, json
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset
 from tqdm import tqdm
-layer  = 12
+import json
+import matplotlib.pyplot as plt
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--layer", type=int, nargs="+", default=[12])
+parser.add_argument("--n", type=int, default=5_000)
+args = parser.parse_args()
+
+n_gpus = torch.cuda.device_count()
+devices = [f"cuda:{i}" for i in range(n_gpus)]
+
+Ws = []
+for idx, layer in enumerate(args.layer):
+    dev = devices[idx % n_gpus]
+    W = torch.load(f"lsq_data/weights/ee_head_l{layer}.pt",
+                   map_location=dev)
+    Ws.append(W.to(torch.bfloat16))
+
 MODEL_ID = "meta-llama/Llama-4-Scout-17B-16E"
-W      = torch.load("ee_head_l12_l4.pt", map_location = "cuda")
-W = W.to(torch.bfloat16)
-W_repl = {torch.device(f"cuda:{d}"): W.to(f"cuda:{d}") for d in range(torch.cuda.device_count())}
 tok    = AutoTokenizer.from_pretrained(MODEL_ID, padding_side="left")
 model  = AutoModelForCausalLM.from_pretrained(
             MODEL_ID, torch_dtype=torch.bfloat16,
-            device_map="auto", attn_implementation = "flash_attention_2", trust_remote_code=True).eval()
+            device_map="auto",
+            attn_implementation = "flash_attention_2",
+            trust_remote_code=True,
+            cache_dir="/mnt/ss-decoding/models/meta-llama/Llama-4-Scout-17B-16E"
+)
+model.eval()
+
 DATA_FILE = "/mnt/ss-decoding/datasets/sharegpt/ShareGPT_V3_unfiltered_cleaned_split.json"
-TEST_ROWS = "train[50000:55000]"
-test_ds = load_dataset("json", data_files=DATA_FILE, split=TEST_ROWS)
-hits=tot=0
+TRAIN_ROWS = f"train[50000:{50000+args.n}]"
+ds = load_dataset("json", data_files=DATA_FILE, split=TRAIN_ROWS)
+
+hits=[0]*len(args.layer)
+tot=0
 with torch.no_grad():
-    for row in tqdm(test_ds, total=5_000):
-        if not row["conversations"]:
+    for row in tqdm(ds, total=args.n):
+        conv = row["conversations"]
+        if not conv:
             continue
-        ids = tok(row["conversations"][0]["value"],
+        prompt = conv[0]["value"]
+        ids = tok(prompt,
                   return_tensors="pt",
                   truncation=True, max_length=256).to("cuda")
         out = model(**ids, use_cache=False, output_hidden_states=True)
-        h12 = out.hidden_states[layer+1][:,-1,:]
-        dev = h12.device
-        draft = (h12 @ W_repl[dev].T).float() 
-        gold = out.logits[:,-1,:].argmax(-1)
-        pred = draft.argmax(-1)
-        hits += (pred == gold).sum().item()
+        for i, layer in enumerate(args.layer):
+            h = out.hidden_states[i+1][:,-1,:]
+            dev = h.device
+            draft = (h @ Ws[i].to(dev).T).float() 
+            gold = out.logits[:,-1,:].argmax(-1)
+            pred = draft.argmax(-1)
+            hits[i] += (pred == gold).sum().item()
         tot += 1
-print(f"L{layer} accept-rate: {hits/tot:6.2%}")
+acc = [hits[i]/tot for i in range(len(args.layer))]
+
+for i, layer in enumerate(args.layer):
+    print(f"L{layer} accept-rate: {acc[i]:6.2%}")
+
+out = {
+    "hits": hits,
+    "acc": acc,
+    "tot": tot,
+    "layers": args.layer,
+    "n": args.n
+}
+
+out_file = "accept_rate_" + "_".join(map(str, args.layer)) + f"_n{args.n}.json"
+
+with open(f"lsq_data/{out_file}", "w") as f:
+    json.dump(out, f)
+
+plt.figure(figsize=(10, 6))
+plt.plot(args.layer, acc, marker='o', linestyle='-', color='b')
+plt.xlabel('Layer')
+plt.ylabel('Accept Rate')
+plt.title(f'Accept Rate by Layer')
+plt.savefig(f"lsq_data/accept_rate_{'_'.join(map(str, args.layer))}_n{args.n}.png")
+plt.close()
