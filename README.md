@@ -47,7 +47,7 @@ git clone https://github.com/yourname/llm-highperf-router && cd llm-highperf-rou
 conda env create -f env/environment.yml && conda activate llama4
 
 # 2. pull Llama‑4 Scout‑17B‑16E (INT4)
-python scripts/pull_model.py model
+python scripts/prefetch_model.py model
 
 # 3. baseline greedy benchmark (8‑tok prompt, 16‑tok gen)
 ./scripts/bench.sh baseline_sanity 8 16 --seed 0
@@ -73,7 +73,7 @@ python scripts/pull_model.py model
 ├── ee_head/              # tiny projection checkpoint
 │   └── ee_layer12_lsq.pt
 ├── scripts/
-│   ├── pull_model.py     # HF download helper
+│   ├── prefetch_model.py     # HF download helper
 │   ├── bench.sh          # wraps vLLM benchmark_engine.py
 │   ├── fit_lsq.py        # CPU LSQ projection fit
 │   ├── profile.sh        # Nsight profiler helper
