@@ -19,7 +19,7 @@
 - quantized
 	- unsloth 4 bit
 		- https://huggingface.co/unsloth/Llama-4-Scout-17B-16E-unsloth-bnb-4bit/tree/main
-	- does quantizing effect the ratio of accepted tokens?
+	- does quantizing affect the ratio of accepted tokens?
 		- **Venkat -> tomorrow**
 	- can we use a quantized drafter and full weight verifier?
 		- this is tricky, need them both loaded at the same time
