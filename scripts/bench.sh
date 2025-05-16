@@ -63,7 +63,7 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 OUT_JSON="${RESULT_DIR}/${RUN_NAME}_${STAMP}.json"
 LOG_FILE="${OUT_JSON%.json}.log"
 
-echo "▶️  $RUN_NAME  | prompt=$P_TOK gen=$G_TOK np=$NUM_PROMPTS warmup=$WARMUP"
+echo "▶"
 echo "⏱  capturing SM util…"
 
 TMP_UTIL=$(mktemp)
