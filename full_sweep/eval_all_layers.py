@@ -104,6 +104,8 @@ print(f"Collected {len(prompts)} prompts for evaluation.")
 hits = {l: 0 for l in Ws.keys()}     # correct predictions per layer
 tots = {l: 0 for l in Ws.keys()}     # token count per layer
 nll_sum = {l: 0.0 for l in Ws.keys()} # accumulated NLL per layer
+total_nll = 0.0
+total_tokens = 0
 printed_example = False  # sanity print only once
 
 print("Starting evaluation...")
@@ -115,17 +117,34 @@ with torch.inference_mode():
         ids = tok(batch_prompts, padding="max_length", truncation=True,
                   max_length=args.seq, return_tensors="pt").to(embed_dev)
 
+        # ------------- build gold labels from source text -----------------
+        input_ids = ids["input_ids"]              # (B, S)
+        labels = input_ids.clone()
+        labels[labels == tok.pad_token_id] = -100
+
+        gold = []
+        for b in range(labels.size(0)):
+            last = (ids["attention_mask"][b] == 1).nonzero(as_tuple=False).max()
+            if last + 1 < labels.size(1):
+                gold.append(labels[b, last + 1])
+            else:
+                gold.append(tok.eos_token_id)
+        gold = torch.tensor(gold, device=labels.device)
+
         out = model(**ids, use_cache=True, output_hidden_states=True)
+
+        lm_loss = F.cross_entropy(
+            out.logits.float().view(-1, out.logits.size(-1)),
+            labels.view(-1),
+            ignore_index=-100,
+            reduction="sum",
+        )
+        total_nll += lm_loss.item()
+        total_tokens += (labels != -100).sum().item()
 
         attn_mask = ids['attention_mask']          # (B, SEQ)
         last_idx = attn_mask.sum(dim=1) - 1       # (B,)
 
-        # target = full-model *prediction* for the **next** token
-        gold_logits = out.logits[
-            torch.arange(out.logits.size(0), device=out.logits.device),
-            last_idx,
-        ]                                       # (B, V)
-        gold = gold_logits.argmax(-1)            # (B,)
         keep = gold != tok.eos_token_id          # ignore EOS tokens
 
         for l_idx in Ws.keys(): # Iterate over successfully loaded heads
@@ -150,18 +169,17 @@ with torch.inference_mode():
                                        gold[keep].to(logits_h.device),
                                        reduction='sum')
                 nll_sum[l_idx] += loss.item()
-                if not printed_example:
-                    sample_i = torch.randint(len(batch_prompts), (1,)).item()
+                sample_i = torch.randint(len(batch_prompts), (1,)).item()
+                if not printed_example and (pred[sample_i] != gold[sample_i]):
                     print("\nPrompt:", batch_prompts[sample_i][-200:])
                     print("Gold token:", tok.decode([gold[sample_i]]).strip())
                     top_k = logits_h[sample_i].float().softmax(-1).topk(5)
                     print("LSQ top-5:",
                           [(tok.decode([idx]), float(p))
                            for p, idx in zip(top_k.values, top_k.indices)])
-                    print("Full model top-1:", tok.decode([gold[sample_i]]))
                     printed_example = True
 
-print("\n--- Accuracy vs full-model next-token prediction ---")
+print("\n--- Accuracy vs ground-truth next token ---")
 for l_idx in Ws.keys():
     if tots[l_idx] > 0:
         acc = hits[l_idx] / tots[l_idx]
@@ -169,3 +187,7 @@ for l_idx in Ws.keys():
         print(f"L{l_idx:02d} acc:{acc:5.2%}  ppl:{ppl:6.2f}  tokens:{tots[l_idx]}")
     else:
         print(f"Layer {l_idx:02d} acc: N/A (no samples processed or head not loaded)")
+
+if total_tokens > 0:
+    full_ppl = math.exp(total_nll / total_tokens)
+    print(f"Unconditional PPL over prefix: {full_ppl:.2f}")

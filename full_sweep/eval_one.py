@@ -7,9 +7,10 @@ Prints accept-rate.
 import argparse
 import torch
 import tqdm
+import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset
-import os
+import os, math
 
 # Suggested: For PyTorch 2.0+ to allow TF32 on Ampere/Hopper GPUs
 # if torch.__version__ >= "2.0":
@@ -85,6 +86,9 @@ print(f"Collected {len(prompts)} prompts for evaluation.")
 
 hits = 0
 tot = 0
+nll_sum = 0.0
+total_nll = 0.0
+total_tokens = 0
 
 # Use torch.inference_mode() for evaluation
 with torch.inference_mode():
@@ -94,11 +98,24 @@ with torch.inference_mode():
         
         ids = tok(
             batch_prompts,
-            padding="longest", # Tokenizer already has padding_side="left"
+            padding="longest",  # Tokenizer already has padding_side="left"
             truncation=True,
             max_length=args.seq,
-            return_tensors="pt"
-        ).to(model.device) # Ensure input tensors are on the same device as the model
+            return_tensors="pt",
+        ).to(model.device)
+
+        input_ids = ids["input_ids"]
+        labels = input_ids.clone()
+        labels[labels == tok.pad_token_id] = -100
+
+        gold = []
+        for b in range(labels.size(0)):
+            last = (ids["attention_mask"][b] == 1).nonzero(as_tuple=False).max()
+            if last + 1 < labels.size(1):
+                gold.append(labels[b, last + 1])
+            else:
+                gold.append(tok.eos_token_id)
+        gold = torch.tensor(gold, device=labels.device)
 
         out = model(**ids, use_cache=True, output_hidden_states=True)
         
@@ -106,16 +123,37 @@ with torch.inference_mode():
         # out.hidden_states elements are tuples; the actual tensor is the first element
         hidden_state_tensor = out.hidden_states[args.layer + 1]
         h = hidden_state_tensor[:, -1, :].to(W.device)  # (B,d)
-        pred = (h @ W.T).argmax(-1) # pred should be on W.device
-        
-        # Ensure gold is on the same device as pred for comparison
-        # out.logits is the tensor directly
-        gold = out.logits[:, -1, :].argmax(-1).to(pred.device)
-        
-        hits += (pred == gold).sum().item()
-        tot += len(batch_prompts)
+        logits_h = h @ W.T
+        pred = logits_h.argmax(-1)
+
+        keep = gold != tok.eos_token_id
+        if keep.any():
+            hits += (pred[keep] == gold[keep].to(pred.device)).sum().item()
+            tot += keep.sum().item()
+
+            loss = F.cross_entropy(
+                logits_h[keep].float(),
+                gold[keep].to(W.device),
+                reduction="sum",
+            )
+            nll_sum += loss.item()
+
+        lm_loss = F.cross_entropy(
+            out.logits.float().view(-1, out.logits.size(-1)),
+            labels.view(-1),
+            ignore_index=-100,
+            reduction="sum",
+        )
+        total_nll += lm_loss.item()
+        total_tokens += (labels != -100).sum().item()
 
 if tot > 0:
-    print(f"Layer {args.layer} accept-rate: {hits/tot:.2%}")
+    acc = hits / tot
+    ppl = math.exp(nll_sum / tot)
+    print(f"Layer {args.layer} acc:{acc:.2%} ppl:{ppl:.2f}")
 else:
-    print(f"Layer {args.layer} accept-rate: N/A (no samples processed)")
+    print(f"Layer {args.layer} acc: N/A (no samples processed)")
+
+if total_tokens > 0:
+    full_ppl = math.exp(total_nll / total_tokens)
+    print(f"Unconditional PPL over prefix: {full_ppl:.2f}")
