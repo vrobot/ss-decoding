@@ -1,29 +1,0 @@
-/mnt/ss-decoding/anil/.venv/lib/python3.12/site-packages/transformers/utils/hub.py:105: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
-  warnings.warn(
-Could not cache non-existence of file. Will ignore error and continue. Error: [Errno 13] Permission denied: '/mnt/ss-decoding/hf_cache/models--meta-llama--Llama-4-Scout-17B-16E/.no_exist/14d516bdff6ac06cec40678529222f193386189c/model.safetensors'
-Ignored error while writing commit hash to /mnt/ss-decoding/hf_cache/models--meta-llama--Llama-4-Scout-17B-16E/refs/main: [Errno 13] Permission denied: '/mnt/ss-decoding/hf_cache/models--meta-llama--Llama-4-Scout-17B-16E/refs/main'.
-Fetching 50 files:   0%|          | 0/50 [00:00<?, ?it/s]Fetching 50 files: 100%|██████████| 50/50 [00:00<00:00, 339894.98it/s]
-Loading checkpoint shards:   0%|          | 0/50 [00:00<?, ?it/s]Loading checkpoint shards:   2%|▏         | 1/50 [00:08<06:59,  8.56s/it]Loading checkpoint shards:   4%|▍         | 2/50 [00:09<03:13,  4.03s/it]Loading checkpoint shards:   6%|▌         | 3/50 [00:10<02:00,  2.56s/it]Loading checkpoint shards:   8%|▊         | 4/50 [00:10<01:24,  1.85s/it]Loading checkpoint shards:  10%|█         | 5/50 [00:11<01:05,  1.45s/it]Loading checkpoint shards:  12%|█▏        | 6/50 [00:12<00:53,  1.21s/it]Loading checkpoint shards:  14%|█▍        | 7/50 [00:13<00:46,  1.07s/it]Loading checkpoint shards:  16%|█▌        | 8/50 [00:14<00:40,  1.03it/s]Loading checkpoint shards:  18%|█▊        | 9/50 [00:14<00:37,  1.11it/s]Loading checkpoint shards:  20%|██        | 10/50 [00:15<00:34,  1.17it/s]Loading checkpoint shards:  22%|██▏       | 11/50 [00:16<00:32,  1.20it/s]Loading checkpoint shards:  24%|██▍       | 12/50 [00:17<00:31,  1.22it/s]Loading checkpoint shards:  26%|██▌       | 13/50 [00:17<00:29,  1.24it/s]Loading checkpoint shards:  28%|██▊       | 14/50 [00:18<00:28,  1.26it/s]Loading checkpoint shards:  30%|███       | 15/50 [00:19<00:29,  1.19it/s]Loading checkpoint shards:  32%|███▏      | 16/50 [00:20<00:30,  1.12it/s]Loading checkpoint shards:  34%|███▍      | 17/50 [00:21<00:30,  1.08it/s]Loading checkpoint shards:  36%|███▌      | 18/50 [00:22<00:29,  1.07it/s]Loading checkpoint shards:  38%|███▊      | 19/50 [00:23<00:28,  1.07it/s]Loading checkpoint shards:  38%|███▊      | 19/50 [00:23<00:38,  1.25s/it]
-Traceback (most recent call last):
-  File "/mnt/ss-decoding/anil/llama-3-fresh/full_sweep/eval_one.py", line 24, in <module>
-    model = AutoModelForCausalLM.from_pretrained(
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/mnt/ss-decoding/anil/.venv/lib/python3.12/site-packages/transformers/models/auto/auto_factory.py", line 571, in from_pretrained
-    return model_class.from_pretrained(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/mnt/ss-decoding/anil/.venv/lib/python3.12/site-packages/transformers/modeling_utils.py", line 279, in _wrapper
-    return func(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^
-  File "/mnt/ss-decoding/anil/.venv/lib/python3.12/site-packages/transformers/modeling_utils.py", line 4399, in from_pretrained
-    ) = cls._load_pretrained_model(
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/mnt/ss-decoding/anil/.venv/lib/python3.12/site-packages/transformers/modeling_utils.py", line 4833, in _load_pretrained_model
-    disk_offload_index, cpu_offload_index = _load_state_dict_into_meta_model(
-                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/mnt/ss-decoding/anil/.venv/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 116, in decorate_context
-    return func(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^
-  File "/mnt/ss-decoding/anil/.venv/lib/python3.12/site-packages/transformers/modeling_utils.py", line 824, in _load_state_dict_into_meta_model
-    _load_parameter_into_model(model, param_name, param.to(param_device))
-                                                  ^^^^^^^^^^^^^^^^^^^^^^
-torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 2.50 GiB. GPU 0 has a total capacity of 79.10 GiB of which 1.45 GiB is free. Including non-PyTorch memory, this process has 77.64 GiB memory in use. Of the allocated memory 77.13 GiB is allocated by PyTorch, and 7.71 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
