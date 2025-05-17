@@ -1,5 +1,3 @@
----
-
 ## 0 . Why does this repo exist?
 Most open‑source stacks chase raw kernel speed (vLLM, TGI) but leave **routing, caching and observability** bolted on as after‑thoughts.  
 Here we build a **composable control layer** that:
