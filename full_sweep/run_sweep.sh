@@ -9,7 +9,7 @@ MODEL_ID="meta-llama/Llama-4-Scout-17B-16E"
 DATA_FILE="/mnt/ss-decoding/datasets/sharegpt/ShareGPT_V3_unfiltered_cleaned_split.json"
 N_PROMPTS=50000            # train rows
 SEQ=256                    # trunc length
-BATCH=256                  # GPU batch during dump (Increased from 8 to 256)
+BATCH=32                   # GPU batch during dump
 LAYER_STEP=4               # evaluate every 4th layer
 GPUS=$(nvidia-smi -L | wc -l)   # auto-detect
 NUM_LAYERS=48              # Set to the total number of layers in your model
@@ -46,7 +46,8 @@ $PY fit_lsq.py \
    --out_dir "$HEAD_DIR" \
    --lambda_ "$FIT_LAMBDA" \
    --gpu_id 0 \
-   --layers_per_batch 16 \
+   --layers_per_batch 8 \
+   --acc_dtype float16 \
    2>&1 | tee "$LOG_DIR/fit_lsq_all_layers.log"
 # If the above tee command causes issues with tqdm rendering due to piping,
 # an alternative is to let tqdm print to stderr if fit_lsq.py is modified,
