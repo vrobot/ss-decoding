@@ -53,7 +53,7 @@ print(f"Found {len(shards)} shards in {args.act_dir}")
 # --- Determine device for solving (GPU if available) ---
 if not torch.cuda.is_available():
     raise RuntimeError("CUDA not available. This script requires a GPU.")
-device = torch.device(f"cuda:{args.gpu_id}")
+device = torch.device(f"cuda:{args.gpu_id % torch.cuda.device_count()}")
 print(f"Using device: {device} for accumulation and solving.")
 torch.cuda.set_device(device)  # Set default CUDA device
 
@@ -98,14 +98,12 @@ for batch_idx in range(num_layer_batches):
     print(
         f"Initializing GPU accumulators ({args.acc_dtype}) for {len(current_batch_layer_keys)} layers in this batch..."
     )
-    XtX_batch_gpu = {
-        layer_key: torch.zeros((d_model, d_model), dtype=acc_dtype, device=device)
-        for layer_key in current_batch_layer_keys
-    }
-    YtX_batch_gpu = {
-        layer_key: torch.zeros((vocab_size, d_model), dtype=acc_dtype, device=device)
-        for layer_key in current_batch_layer_keys
-    }
+    XtX_batch_gpu = {k: torch.zeros((d_model,d_model),
+                                 dtype=torch.float32,
+                                 device=device) for k in current_batch_layer_keys}
+    YtX_batch_gpu = {k: torch.zeros((vocab_size,d_model),
+                                 dtype=torch.float32,
+                                 device=device) for k in current_batch_layer_keys}
     print("GPU accumulators for batch initialized.")
 
     print(f"Starting accumulation pass over {len(shards)} shards for current layer batch...")
@@ -117,7 +115,7 @@ for batch_idx in range(num_layer_batches):
             # Logits are common for all layers in this batch for this shard
             Y_shard_cpu = blob["logits"]
             # Move to GPU with requested dtype and clamp
-            current_logits_gpu = Y_shard_cpu.to(device=device, dtype=acc_dtype)
+            current_logits_gpu = Y_shard_cpu.to(device=device, dtype=torch.float32)
             current_logits_gpu.clamp_(-3000.0, 3000.0)  # Clamp large values
 
             for layer_key in current_batch_layer_keys:
@@ -127,7 +125,7 @@ for batch_idx in range(num_layer_batches):
 
                 X_shard_layer_cpu = blob[layer_key]
                 # Move to GPU with requested dtype and clamp
-                X_shard_layer_gpu = X_shard_layer_cpu.to(device=device, dtype=acc_dtype)
+                X_shard_layer_gpu = X_shard_layer_cpu.to(device=device, dtype=torch.float32)
                 X_shard_layer_gpu.clamp_(-3000.0, 3000.0)  # Clamp large values
 
                 # Matmuls in the chosen dtype; accumulators share the same dtype
