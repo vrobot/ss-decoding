@@ -175,3 +175,12 @@ cython_debug/
 
 # sweep logs
 full_sweep/logs/*.out
+# sweep artefacts
+full_sweep/logs/*.out
+full_sweep/acts/
+full_sweep/acts_output/
+full_sweep/heads/
+full_sweep/heads_output/
+full_sweep/*.sh
+full_sweep/*.yaml
+
