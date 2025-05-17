@@ -20,6 +20,8 @@ args = p.parse_args()
 
 # ---------- load ----------
 tok = AutoTokenizer.from_pretrained(args.model, padding_side="left")
+if tok.pad_token is None:
+    tok.pad_token = tok.eos_token
 model = AutoModelForCausalLM.from_pretrained(
     args.model,
     torch_dtype=torch.bfloat16,
