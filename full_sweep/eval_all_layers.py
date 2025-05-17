@@ -4,7 +4,8 @@ Evaluate many LSQ heads in one forward pass.
 Works with MoE models by letting Accelerate shard across all visible GPUs.
 """
 
-import argparse, torch, tqdm, os, re
+import argparse, torch, tqdm, os, re, math
+import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset
 
@@ -100,8 +101,9 @@ if not prompts:
 print(f"Collected {len(prompts)} prompts for evaluation.")
 
 
-hits = {l: 0 for l in Ws.keys()} # Initialize for loaded heads
-tots = {l: 0 for l in Ws.keys()} # Initialize for loaded heads
+hits = {l: 0 for l in Ws.keys()}     # correct predictions per layer
+tots = {l: 0 for l in Ws.keys()}     # token count per layer
+nll_sum = {l: 0.0 for l in Ws.keys()} # accumulated NLL per layer
 
 print("Starting evaluation...")
 with torch.inference_mode():
@@ -117,9 +119,10 @@ with torch.inference_mode():
         attn_mask = ids['attention_mask']          # (B, SEQ)
         last_idx = attn_mask.sum(dim=1) - 1       # (B,)
 
-        logits = out.logits
-        gold = logits[torch.arange(logits.size(0), device=logits.device),
-                     last_idx].argmax(-1)
+        B = ids['input_ids'].size(0)
+        dev = ids['input_ids'].device
+        gold = ids['input_ids'][torch.arange(B, device=dev), last_idx]  # (B,)
+        keep = gold != tok.eos_token_id
 
         for l_idx in Ws.keys(): # Iterate over successfully loaded heads
             hidden = out.hidden_states[l_idx+1]                     # (B,S,d) on dev_L
@@ -131,14 +134,20 @@ with torch.inference_mode():
             if Ws[l_idx].device != hidden.device:
                 Ws[l_idx] = Ws[l_idx].to(hidden.device, non_blocking=True, dtype=hidden.dtype)
 
-            pred = (h_last @ Ws[l_idx].T).argmax(-1)                # GPU gemm
-
-            hits[l_idx] += (pred == gold.to(pred.device)).sum().item()
-            tots[l_idx] += len(batch_prompts)
+            W = Ws[l_idx]
+            logits_h = h_last @ W.T                    # (B, V)
+            if keep.any():
+                pred = logits_h.argmax(-1)
+                hits[l_idx] += (pred[keep] == gold[keep].to(pred.device)).sum().item()
+                tots[l_idx] += keep.sum().item()
+                loss = F.cross_entropy(logits_h[keep], gold[keep].to(logits_h.device), reduction='sum')
+                nll_sum[l_idx] += loss.item()
 
 print("\n--- Evaluation Results ---")
 for l_idx in Ws.keys():
     if tots[l_idx] > 0:
-        print(f"Layer {l_idx:02d} accept-rate: {hits[l_idx]/tots[l_idx]:.2%}")
+        acc = hits[l_idx] / tots[l_idx]
+        ppl = math.exp(nll_sum[l_idx] / tots[l_idx])
+        print(f"L{l_idx:02d} acc:{acc:5.2%}  ppl:{ppl:6.2f}  tokens:{tots[l_idx]}")
     else:
-        print(f"Layer {l_idx:02d} accept-rate: N/A (no samples processed or head not loaded)") 
+        print(f"Layer {l_idx:02d} acc: N/A (no samples processed or head not loaded)")
