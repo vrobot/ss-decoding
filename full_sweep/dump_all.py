@@ -19,6 +19,7 @@ p.add_argument("--n",     type=int, default=50_000)
 p.add_argument("--batch", type=int, default=256)
 p.add_argument("--seq",   type=int, default=256)
 p.add_argument("--out",   default="acts_output")
+p.add_argument("--layer_jump", type=int, default=4)
 args = p.parse_args()
 
 N, B, SEQ = args.n, args.batch, args.seq
@@ -43,9 +44,16 @@ def make_hook(i):
     key = f"h{i}"
     def _hook(_, __, out):
         # out = (hidden, present_kv)
-        h = out[0]                          # (B, S, d)
-        cache[key] = h[torch.arange(h.size(0), device=h.device),
-                       last_idx].bfloat16().cpu()
+        h = out[0]                          # (B, S, d) - this tensor could be on any GPU
+        current_h_device = h.device
+        
+        # Ensure last_idx is on the same device as h for indexing
+        # The `last_idx` variable is captured from the outer scope of the batch loop
+        last_idx_on_h_device = last_idx.to(current_h_device)
+        
+        batch_indices_on_h_device = torch.arange(h.size(0), device=current_h_device)
+        
+        cache[key] = h[batch_indices_on_h_device, last_idx_on_h_device].bfloat16().cpu()
     return _hook
 
 for i, blk in enumerate(model.model.layers):
@@ -79,10 +87,14 @@ with torch.no_grad():
                     output_hidden_states=True)            # tuple len = L+1
 
         shard = {}
-        for l_i, key in enumerate([f"h{i}" for i in range(len(model.model.layers))]):            # hidden_states[0] = embeddings
-            h = out.hidden_states[l_i+1]                  # (B,SEQ,d)
-            h_last = h[torch.arange(h.size(0), device=h.device), last_idx]
-            shard[key] = h_last.bfloat16().cpu()
+        for i in range(0, len(model.model.layers), args.layer_jump):
+            key = f"h{i}"
+            if i + 1 < len(out.hidden_states):
+                h = out.hidden_states[i+1]  # (B,SEQ,d)
+                h_last = h[torch.arange(h.size(0), device=h.device), last_idx]
+                shard[key] = h_last.bfloat16().cpu()
+            else:
+                print(f"Warning: Layer index {i} (from layer_jump) is out of bounds for hidden_states. Skipping {key}.")
 
         shard["logits"] = out.logits[
             torch.arange(out.logits.size(0), device=dev), last_idx

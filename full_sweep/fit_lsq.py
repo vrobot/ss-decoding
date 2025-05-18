@@ -34,6 +34,7 @@ p.add_argument(
     default="float16",
     help="Data type for accumulation buffers. Using float16 reduces memory usage but may slightly affect accuracy.",
 )
+p.add_argument("--layer_jump", type=int, default=4)
 args = p.parse_args()
 
 dtype_map = {
@@ -71,21 +72,22 @@ if "logits" not in meta_blob:
 
 d_model = meta_blob[all_layer_keys[0]].shape[1]
 vocab_size = meta_blob["logits"].shape[1]
-num_total_layers = len(all_layer_keys)
-print(f"Discovered {num_total_layers} layers. d_model={d_model}, vocab_size={vocab_size}")
-del meta_blob  # Free memory
+num_total_layers = len(all_layer_keys) # CORRECTED: This is the number of layers we have activations for
+print(f"Discovered {len(all_layer_keys)} activation files (e.g., {all_layer_keys[:3]}...). d_model={d_model}, vocab_size={vocab_size}")
+del meta_blob
 
 os.makedirs(args.out_dir, exist_ok=True)
 
+# The layers_per_batch logic should operate on num_total_layers, which is now correct
 num_layer_batches = math.ceil(num_total_layers / args.layers_per_batch)
 print(
     f"Processing {num_total_layers} layers in {num_layer_batches} batches of up to {args.layers_per_batch} layers each."
 )
 
 for batch_idx in range(num_layer_batches):
-    start_layer_idx = batch_idx * args.layers_per_batch
-    end_layer_idx = min((batch_idx + 1) * args.layers_per_batch, num_total_layers)
-    current_batch_layer_keys = all_layer_keys[start_layer_idx:end_layer_idx]
+    start_idx_for_slicing = batch_idx * args.layers_per_batch # This is an index into all_layer_keys
+    end_idx_for_slicing = min(start_idx_for_slicing + args.layers_per_batch, num_total_layers)
+    current_batch_layer_keys = all_layer_keys[start_idx_for_slicing:end_idx_for_slicing]
 
     if not current_batch_layer_keys:
         continue

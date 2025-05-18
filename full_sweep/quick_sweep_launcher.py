@@ -72,6 +72,7 @@ def phase_dump(cfg, dry=False):
            "--data", cfg["data_file"],
            "--out", cfg["act_dir"],
            "--seq", str(cfg["seq"]),
+           "--layer_jump", str(cfg["layer_jump"]),
            "--n", str(cfg["n_prompts"] if not dry else 8), # Use small N for dry run
            "--batch", str(cfg["dump_batch"] if not dry else 2)] # Use small batch for dry run
     run(cmd)
@@ -88,6 +89,7 @@ def phase_fit(cfg, dry=False):
            "--act_dir", cfg["act_dir"],
            "--out_dir", cfg["head_dir"],
            "--lambda_", str(cfg["fit_lambda"]),
+           "--layer_jump", str(cfg["layer_jump"]),
            "--layers_per_batch", str(cfg["layers_per_batch"])]
     # fit_lsq.py uses gpu_id parameter, defaulting to 0.
     # It will respect CUDA_VISIBLE_DEVICES if set externally.
@@ -101,10 +103,10 @@ def phase_eval(cfg, dry=False):
            "--model", cfg["model_id"],
            "--data", cfg["data_file"],
            "--heads", cfg["head_dir"],
-           "--layers", cfg["layers_spec"],
            "--seq", str(cfg["seq"]),
            "--batch_size", str( cfg["eval_batch"] if not dry else 2 ), # Use small batch for dry run
-           "--rows", cfg.get("rows", "train[50000:55000]")] # Default from original script
+           "--rows", cfg.get("rows", "train[50000:55000]"),
+           "--layer_jump", str(cfg["layer_jump"])] # Default from original script
 
     # Prepare environment for the subprocess
     eval_env = {} # Start with an empty dict, os.environ.copy() is done in run()
@@ -167,33 +169,24 @@ def main():
     for k in ("act_dir", "head_dir", "log_dir"):
         if k in cfg:
             dir_path = Path(cfg[k])
-            dir_path.mkdir(parents=True, exist_ok=True)
+
+            # Clean up the directory if it exists
+            if dir_path.exists():
+                print(f"Cleaning up existing path: {dir_path}...")
+                if dir_path.is_dir():
+                    shutil.rmtree(dir_path)
+                    print(f"Removed existing directory and its contents: {dir_path}")
+                else: # It's a file
+                    dir_path.unlink()
+                    print(f"Removed existing file: {dir_path}")
+            
+            # Create the directory (now guaranteed to be clean or new)
+            dir_path.mkdir(parents=True, exist_ok=True) # exist_ok=True is good for race conditions or if rmtree/unlink had issues
             cfg[k] = str(dir_path.resolve()) # Store absolute path back in cfg
-            print(f"Ensured directory exists: {cfg[k]}")
+            print(f"Created/Ensured clean directory exists: {cfg[k]}")
         else:
             print(f"Warning: Directory key '{k}' not found in config.")
 
-
-    # smoke test first if not a dry run itself -------------------------------
-    # if not args.dry:
-    #     print("\n-- PRE-RUN SMOKE-TEST (eval phase only) -----------------------")
-    #     # Create temporary directories for smoke test artifacts if dump/fit are skipped
-    #     # to avoid polluting real act_dir/head_dir if they are large.
-    #     # However, eval needs heads. For a true smoke test of eval, it needs dummy heads.
-    #     # The current smoke test runs eval with potentially real heads.
-    #     # A simpler smoke test might just be to run eval with dry=True
-    #     # which uses batch_size=2.
-    #     try:
-    #         phase_eval(cfg, dry=True) # eval smoke test with batch_size=2
-    #         if not mem_ok(): # Check VRAM after smoke test
-    #              print("ERROR: Smoke test appears to have leaked VRAM or started with insufficient VRAM. Aborting.")
-    #              sys.exit(1)
-    #         print("-- SMOKE-TEST PASSED ------------------------------------------\n")
-    #     except Exception as e:
-    #         print(f"ERROR: Smoke test failed: {e}")
-    #         sys.exit(1)
-    # else:
-    #     print("\n-- DRY RUN MODE: Will only run smoke-test versions of phases --")
 
     # full run (or dry run if --dry is specified) ---------------------------
     # If --dry, the 'dry' flag passed to phases will use minimal settings.
