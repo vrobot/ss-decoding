@@ -184,3 +184,9 @@ full_sweep/heads_output/
 full_sweep/*.sh
 full_sweep/*.yaml
 
+node_modules/
+*.ipynb
+*.md
+*.err
+package-lock.json
+package.json
