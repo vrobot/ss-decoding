@@ -44,7 +44,7 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map="balanced",
     max_memory=max_mem,
     low_cpu_mem_usage=True,
-    attn_implementation="flash_attention_2",
+    attn_implementation="flash_attention_2", 
 ).eval()
 
 # --- load LSQ heads (always fits on gpu:0) ---
@@ -58,7 +58,16 @@ for l_idx in layers_to_eval:
         continue
     # 3. keep heads on CPU
     Ws[l_idx] = torch.load(head_path, map_location="cpu")
-print(f"Loaded {len(Ws)} LSQ heads.")
+    print(f"  Layer {l_idx}: Head shape = {Ws[l_idx].shape}, dtype = {Ws[l_idx].dtype}")
+    # Verify head is valid
+    if torch.isnan(Ws[l_idx]).any():
+        print(f"  Warning: Head for layer {l_idx} contains NaN values!")
+    if torch.isinf(Ws[l_idx]).any():
+        print(f"  Warning: Head for layer {l_idx} contains Inf values!")
+
+print(f"Loaded {len(Ws)} LSQ heads from {args.heads}")
+print(f"Layer indices loaded: {sorted(Ws.keys())}")
+print(f"Memory usage of heads: {sum(head.element_size() * head.nelement() for head in Ws.values()) / 1024**2:.1f} MB")
 
 # --- dataset ---
 print(f"Loading dataset {args.data} split {args.rows}...")
