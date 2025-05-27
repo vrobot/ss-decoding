@@ -63,7 +63,8 @@ print("Inspecting first shard for metadata...")
 first_shard_path = shards[0]
 meta_blob = torch.load(first_shard_path, map_location="cpu")
 
-all_layer_keys = sorted([k for k in meta_blob.keys() if k.startswith("h")])
+all_layer_keys = sorted([k for k in meta_blob.keys() if k.startswith("h")], 
+                       key=lambda x: int(x[1:]))
 if not all_layer_keys:
     raise ValueError("No layer keys (e.g., 'h0', 'h1') found in the first shard.")
 
