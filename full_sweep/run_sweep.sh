@@ -4,8 +4,9 @@
 
 ### ---- CONFIG -----------------------------------------------------------
 # near the top of run_sweep.sh
-PY=/mnt/ss-decoding/anil/.venv/bin/python      # absolute venv interpreter
+PY=/mnt/ss-decoding/vk/ss-decoding/.venv/bin/python      # absolute venv interpreter
 MODEL_ID="meta-llama/Llama-4-Scout-17B-16E"
+CACHE_DIR="/mnt/ss-decoding/models/meta-llama/Llama-4-Scout-17B-16E"
 DATA_FILE="/mnt/ss-decoding/datasets/sharegpt/ShareGPT_V3_unfiltered_cleaned_split.json"
 N_PROMPTS=50000            # train rows
 SEQ=256                    # trunc length
@@ -19,29 +20,27 @@ LOG_DIR="logs"
 FIT_LAMBDA=1e-4            # Lambda for LSQ fit (Try reducing back from 1e-2)
 EVAL_BATCH_SIZE_ALL_LAYERS=32
 ### ----------------------------------------------------------------------
-export HF_TOKEN= # Ensure your HF token is set if needed for private models
 # tell HF to use the scratch mount that already holds the blobs
-export HF_HOME=/mnt/ss-decoding/hf_cache            # master switch
-export TRANSFORMERS_CACHE=$HF_HOME
-export HF_DATASETS_CACHE=$HF_HOME/datasets
+
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True # Optional: for potential fragmentation
 # MODEL_ID and DATA_FILE are passed as args, no need to export if scripts use args
 
 set -euo pipefail
 mkdir -p "$ACT_DIR" "$HEAD_DIR" "$LOG_DIR"
 
-echo "== 1. dump hidden states =="
+# echo "== 1. dump hidden states =="
 # # Consider commenting out if acts already exist and config matches
 # $PY dump_all.py \
 #    --model "$MODEL_ID" \
 #    --data "$DATA_FILE" \
 #    --n "$N_PROMPTS" --batch "$BATCH" --seq "$SEQ" \
-#    --out "$ACT_DIR"
+#    --out "$ACT_DIR" \
+#    --cache_dir "$CACHE_DIR"
 
-echo "== 2. fit LSQ heads (single pass, all layers) =="
-# The new fit_lsq.py handles all layers in one go, using GPU for accumulation in batches.
-# It will use one GPU (default cuda:0). Set --gpu_id if needed.
-# Adjust --layers_per_batch based on your GPU memory (e.g., H100 80GB might handle 24-30 layers per batch).
+# echo "== 2. fit LSQ heads (single pass, all layers) =="
+# # The new fit_lsq.py handles all layers in one go, using GPU for accumulation in batches.
+# # It will use one GPU (default cuda:0). Set --gpu_id if needed.
+# # Adjust --layers_per_batch based on your GPU memory (e.g., H100 80GB might handle 24-30 layers per batch).
 # $PY fit_lsq.py \
 #    --act_dir "$ACT_DIR" \
 #    --out_dir "$HEAD_DIR" \
@@ -62,12 +61,12 @@ $PY eval_all_layers.py \
     --model "$MODEL_ID" \
     --data  "$DATA_FILE" \
     --heads "$HEAD_DIR" \
-    --layers "0:$NUM_LAYERS:$LAYER_STEP" \
     --batch_size "$EVAL_BATCH_SIZE_ALL_LAYERS" \
     --seq "$SEQ" \
     --rows "train[50000:55000]" \
+    --cache_dir "$CACHE_DIR" \
     | tee "$LOG_DIR/eval_all.out"
 
 echo "== Evaluation complete. Log: $LOG_DIR/eval_all.out =="
-echo "== Sweep finished =="
+# echo "== Sweep finished =="
 

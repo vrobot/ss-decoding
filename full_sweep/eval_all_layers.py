@@ -16,7 +16,7 @@ p.add_argument("--heads", required=True, help="directory with h*.pt")
 p.add_argument("--seq", type=int, default=256)
 p.add_argument("--batch_size", type=int, default=128) # Default from patch, adjust as needed
 p.add_argument("--rows", default="train[50000:55000]")
-p.add_argument("--layer_jump", type=int, default=4)
+p.add_argument("--cache_dir", required=True)
 args = p.parse_args()
 
 # check what layers are available in the heads directory
@@ -38,6 +38,7 @@ num_gpus = torch.cuda.device_count()
 print(f"Found {num_gpus} GPUs available.")
 max_mem = {i: "75GiB" for i in range(num_gpus)}        # ← use INT keys
 
+print(f"Loading model {args.model} with cache dir {args.cache_dir}...")
 model = AutoModelForCausalLM.from_pretrained(
     args.model,
     torch_dtype=torch.bfloat16,
@@ -45,6 +46,8 @@ model = AutoModelForCausalLM.from_pretrained(
     max_memory=max_mem,
     low_cpu_mem_usage=True,
     attn_implementation="flash_attention_2",
+    cache_dir=args.cache_dir,
+    trust_remote_code=True,
 ).eval()
 
 # --- load LSQ heads (always fits on gpu:0) ---

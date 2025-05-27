@@ -1,5 +1,5 @@
 # Required:
-python: /mnt/ss-decoding/anil/.venv/bin/python  # Path to your venv python
+python: /mnt/ss-decoding/vk/ss-decoding/.venv/bin/python  # Path to your venv python
 model_id: Qwen/Qwen1.5-7B
 data_file: /mnt/ss-decoding/datasets/sharegpt/ShareGPT_V3_unfiltered_cleaned_split.json # Path to your data
 act_dir: ./acts_output          # Directory for activations

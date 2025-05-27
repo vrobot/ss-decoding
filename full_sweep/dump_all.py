@@ -20,6 +20,7 @@ p.add_argument("--batch", type=int, default=256)
 p.add_argument("--seq",   type=int, default=256)
 p.add_argument("--out",   default="acts_output")
 p.add_argument("--layer_jump", type=int, default=4)
+p.add_argument("--cache_dir", required=True)
 args = p.parse_args()
 
 N, B, SEQ = args.n, args.batch, args.seq
@@ -33,7 +34,8 @@ model = AutoModelForCausalLM.from_pretrained(
     args.model,
     torch_dtype=torch.bfloat16,
     device_map="auto",
-    attn_implementation="flash_attention_2"
+    attn_implementation="flash_attention_2",
+    cache_dir=args.cache_dir
 ).eval()
 
 # pre-register a tiny hook for every block
