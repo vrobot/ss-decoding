@@ -31,6 +31,13 @@ def main():
     
     os.makedirs(args.out_dir, exist_ok=True)
     
+    # Write parameters to file
+    with open(os.path.join(args.out_dir, "params.txt"), "w") as f:
+        f.write("Dump Parameters:\n")
+        f.write("="*50 + "\n")
+        for arg, value in vars(args).items():
+            f.write(f"{arg}: {value}\n")
+    
     model, tok = load_model_and_tokenizer(args.model, cache_dir=args.cache_dir)
     prompts = format_prompts(load_prompts(args.data, args.n_prompts))
     

@@ -23,7 +23,6 @@ def load_prompts(data_file, n_prompts, split="train"):
     ds_split = ds['train'].train_test_split(test_size=0.2, seed=42)
     prompts = []
     for i, row in enumerate(ds_split[split]):
-        print(i)
         if len(prompts) >= n_prompts:
             break
         if row.get("conversations") and row["conversations"][0]["from"] == "human":
