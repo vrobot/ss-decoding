@@ -21,7 +21,9 @@ def main():
     args = p.parse_args()
     
     model, tok = load_model_and_tokenizer(args.model, cache_dir=args.cache_dir)
-    prompts = format_prompts(load_prompts(args.data, args.n_eval, split="test"))
+    prompts = load_prompts(args.data, args.n_eval, split="test")
+    ### UNCOMMENT THESE LINES WHEN RUNNING INSTRUCT MODELS
+    # prompts = format_prompts(prompts)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Load all LSQ heads
