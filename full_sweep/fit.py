@@ -24,32 +24,44 @@ def main():
     print(f"Found {len(files)} activation files")
     
     # Get dimensions from first file
-    first_batch = torch.load(files[0], map_location="cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    
+    first_batch = torch.load(files[0], map_location=device)
     layer_keys = sorted([k for k in first_batch.keys() if k.startswith("h")])
-    d_model = first_batch[layer_keys[0]].shape[1]
-    vocab_size = first_batch["logits"].shape[1]
+    d_model = first_batch[layer_keys[0]].shape[2]   # Last dimension for 3D tensor
+    vocab_size = first_batch["logits"].shape[2]     # Last dimension for 3D tensor
     
     print(f"Processing {len(layer_keys)} layers, d_model={d_model}, vocab_size={vocab_size}")
     
     # Process each layer
     for layer_key in tqdm(layer_keys, desc="Fitting LSQ heads"):
-        XtX = torch.zeros(d_model, d_model, dtype=torch.float32)
-        YtX = torch.zeros(vocab_size, d_model, dtype=torch.float32)
+        XtX = torch.zeros(d_model, d_model, dtype=torch.float32, device=device)
+        YtX = torch.zeros(vocab_size, d_model, dtype=torch.float32, device=device)
         
         # Accumulate over all batches
         for file_path in files:
-            batch = torch.load(file_path, map_location="cpu")
+            batch = torch.load(file_path, map_location=device)
             if layer_key not in batch:
                 continue
                 
-            X = batch[layer_key].float()  # (B, d_model)
-            Y = batch["logits"].float()   # (B, vocab_size)
+            X = batch[layer_key].float()  # (B, seq_len, d_model)
+            Y = batch["logits"].float()   # (B, seq_len, vocab_size)
+            lengths = batch["lengths"]    # List or tensor of actual lengths
             
-            XtX += X.T @ X
-            YtX += Y.T @ X
+            # Create mask for valid positions
+            batch_size, seq_len = X.shape[:2]
+            mask = torch.arange(seq_len, device=device)[None, :] < lengths.to(device=device)[:, None]
+            
+            # Apply mask to get only valid tokens
+            X_valid = X[mask]  # (total_valid_tokens, d_model)
+            Y_valid = Y[mask]  # (total_valid_tokens, vocab_size)
+            
+            XtX += X_valid.T @ X_valid
+            YtX += Y_valid.T @ X_valid
         
         # Solve ridge regression: W = Y^T X (X^T X + λI)^-1
-        A = XtX + args.lambda_ * torch.eye(d_model)
+        A = XtX + args.lambda_ * torch.eye(d_model, device=device)
         W = torch.linalg.solve(A, YtX.T).T  # (vocab_size, d_model)
         
         # Save head
