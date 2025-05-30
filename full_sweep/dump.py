@@ -5,16 +5,7 @@ import argparse
 import torch
 import os
 from tqdm import tqdm
-from utils import load_model_and_tokenizer, load_prompts
-
-def format_prompts(prompts) -> list[str]:
-    PROMPT_TEMPLATE = (
-        "<|begin_of_text|><|header_start|>system<|header_end|>\n"
-        "You are a helpful assistant<|eot|><|header_start|>user<|header_end|>\n"
-        "{p}<|eot|>\n"
-        "<|header_start|>assistant<|header_end|>\n"
-    )
-    return [PROMPT_TEMPLATE.format(p=p) for p in prompts]
+from utils import load_model_and_tokenizer, load_prompts, format_prompts
 
 def main():
     p = argparse.ArgumentParser()
