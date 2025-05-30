@@ -10,7 +10,7 @@ from utils import load_model_and_tokenizer, load_prompts, format_prompts
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--model", required=True)
-    p.add_argument("--cache_dir", required=True)
+    p.add_argument("--cache_dir", default=None)
     p.add_argument("--data", required=True)
     p.add_argument("--out_dir", default="acts")
     p.add_argument("--n_prompts", type=int, default=50000)
@@ -30,7 +30,9 @@ def main():
             f.write(f"{arg}: {value}\n")
     
     model, tok = load_model_and_tokenizer(args.model, cache_dir=args.cache_dir)
-    prompts = format_prompts(load_prompts(args.data, args.n_prompts))
+    prompts = load_prompts(args.data, args.n_prompts)
+    ### UNCOMMENT THESE LINES WHEN RUNNING INSTRUCT MODELS
+    # prompts = format_prompts(prompts)
     
     print(f"Loaded {len(prompts)} prompts, processing in batches of {args.batch_size}")
     

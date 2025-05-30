@@ -11,7 +11,7 @@ from utils import load_model_and_tokenizer, load_prompts, format_prompts
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--model", required=True)
-    p.add_argument("--cache_dir", required=True)
+    p.add_argument("--cache_dir", default=None)
     p.add_argument("--data", required=True)
     p.add_argument("--heads_dir", required=True, help="Directory with LSQ head files")
     p.add_argument("--n_eval", type=int, default=5000, help="Number of prompts to evaluate")
@@ -73,7 +73,7 @@ def main():
                     # Save every layer_step-th layer (only for active sequences)
                     for layer_idx in heads.keys():
                         h = out.hidden_states[layer_idx + 1]  # +1 because first is embeddings
-                        h_last = h[:, -1, :]
+                        h_last = h[:, -1, :].to(heads[layer_idx].device)
                         lsq_logits = h_last @ heads[layer_idx].T
                         lsq_preds = torch.argmax(lsq_logits, dim=1)
                         # Only save for sequences that haven't finished
