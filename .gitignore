@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+*.pt
+params.txt
+eval.txt
 # C extensions
 *.so
 *.out
