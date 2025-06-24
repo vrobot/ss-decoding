@@ -50,6 +50,7 @@ def main():
             shard["logits"] = torch.zeros(len(batch_prompts), args.num_steps, model.config.vocab_size, dtype=torch.bfloat16, device="cpu")
             for layer_idx in range(0, len(model.model.layers), args.layer_step):
                 shard[f"h{layer_idx}"] = torch.zeros(len(batch_prompts), args.num_steps, model.config.hidden_size, dtype=torch.bfloat16, device="cpu")
+                shard[f"e{layer_idx}"] = torch.zeros(len(batch_prompts), args.num_steps, dtype=torch.bfloat16, device="cpu")
             
             # Track which sequences have finished and their actual lengths
             finished = torch.zeros(len(batch_prompts), dtype=torch.bool, device=model.device)
@@ -68,6 +69,8 @@ def main():
                         h = out.hidden_states[layer_idx + 1]  # +1 because first is embeddings
                         h_last = h[:, -1, :]
                         # Only save for sequences that haven't finished
+                        shard[f"h{layer_idx}"][active_mask, step, :] = h_last[active_mask].cpu()
+                        # TODO!!!!!!
                         shard[f"h{layer_idx}"][active_mask, step, :] = h_last[active_mask].cpu()
                     
                     # Only save logits for active sequences
