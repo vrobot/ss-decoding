@@ -13,12 +13,15 @@ def main():
     p.add_argument("--model", required=True)
     p.add_argument("--cache_dir", default=None)
     p.add_argument("--data", required=True)
+    p.add_argument("--out_dir", default="evals")
     p.add_argument("--heads_dir", required=True, help="Directory with LSQ head files")
     p.add_argument("--n_eval", type=int, default=5000, help="Number of prompts to evaluate")
     p.add_argument("--batch_size", type=int, default=4)
     p.add_argument("--seq_len", type=int, default=256)
     p.add_argument("--num_steps", type=int, default=16)
     args = p.parse_args()
+
+    os.makedirs(args.out_dir, exist_ok=True)
     
     model, tok = load_model_and_tokenizer(args.model, cache_dir=args.cache_dir)
     prompts = load_prompts(args.data, args.n_eval, split="test")
@@ -58,10 +61,15 @@ def main():
             # Track which sequences have finished and their actual lengths
             finished = torch.zeros(len(batch_prompts), dtype=torch.bool, device=model.device)
             actual_lengths = {}
-            update_mask = {}
+            shard = {}
+
+            shard["next_token"] = torch.zeros(len(batch_prompts), args.num_steps, dtype=torch.int64, device="cpu")
+
             for layer_idx in heads.keys():
-                update_mask[layer_idx] = torch.ones(len(batch_prompts), dtype=torch.bool, device="cpu")
                 actual_lengths[layer_idx] = torch.zeros(len(batch_prompts), dtype=torch.int, device="cpu")
+                shard[f"n{layer_idx}"] = torch.zeros(len(batch_prompts), args.num_steps, dtype=torch.int64, device="cpu")
+                shard[f"e{layer_idx}"] = torch.zeros(len(batch_prompts), args.num_steps, dtype=torch.float32, device="cpu")
+
             
             for step in range(args.num_steps):
                 out = model(ids, attention_mask=attn_mask, use_cache=False, output_hidden_states=True)
@@ -70,29 +78,19 @@ def main():
                 # Only save data for sequences that HAVEN'T finished yet
                 active_mask = ~finished  # Sequences still generating
 
-                shard = {}
                 if active_mask.any():  # If any sequences are still active
                     # Save every layer_step-th layer (only for active sequences)
                     for layer_idx in heads.keys():
                         h = out.hidden_states[layer_idx + 1]  # +1 because first is embeddings
-                        h_last = h[:, -1, :].to(heads[layer_idx].device)
+                        h_last = h[active_mask, -1, :].to(heads[layer_idx].device)
                         lsq_logits = h_last @ heads[layer_idx].T
+                        lsq_probs = lsq_logits.float().softmax(dim=-1)
+                        lsq_entropy = (lsq_probs*torch.log(lsq_probs.clamp(min=1e-12))).sum(dim=-1)
+                        shard[f"e{layer_idx}"][active_mask, step] = lsq_entropy.cpu()
                         lsq_preds = torch.argmax(lsq_logits, dim=1)
-                        # Only save for sequences that haven't finished
-                        shard[layer_idx] = lsq_preds.cpu()
+                        shard[f"n{layer_idx}"][active_mask, step] = lsq_preds.cpu()
                     
-                    model_preds = torch.argmax(out.logits[:, -1, :], dim=1).cpu()
-                    # Update lengths for active sequences
-                    for layer_idx in heads.keys():
-                        mask = (model_preds == shard[layer_idx]) & update_mask[layer_idx]
-                        actual_lengths[layer_idx][mask] += 1
-                        hits[layer_idx] += mask.sum()
-                        total[layer_idx] += update_mask[layer_idx].sum()
-                        update_mask[layer_idx] &= (model_preds == shard[layer_idx])
-                        # print("=="*10, layer_idx, "=="*10)
-                        # print("mask", mask)
-                        # print("update_mask", update_mask[layer_idx])
-                        # print("actual_lengths", actual_lengths[layer_idx])
+                    shard["next_token"][active_mask, step] = next_token.squeeze()[active_mask].cpu()
                 
                 # Mark finished sequences (simplified!)
                 finished |= (next_token.squeeze() == tok.eos_token_id)
@@ -108,25 +106,12 @@ def main():
                 # Continue generation
                 ids = torch.cat((ids, next_token), dim=1)
                 attn_mask = torch.cat((attn_mask, torch.ones(attn_mask.shape[0], 1, device=attn_mask.device)), dim=1)
+
             for layer_idx in heads.keys():
                 seq_lens[layer_idx] += actual_lengths[layer_idx].sum()
             # breakpoint()
 
-    # Save results
-    with open(os.path.join(args.heads_dir, "eval.txt"), "w") as f:
-        f.write("Eval Parameters:\n")
-        f.write("="*50 + "\n")
-        for arg, value in vars(args).items():
-            f.write(f"{arg}: {value}\n")
-    
-        f.write("\n\n--- LSQ Head Accuracy ---")
-        for layer_idx in sorted(heads.keys()):
-            if total[layer_idx] > 0:
-                acc = hits[layer_idx] / total[layer_idx]
-                avg_len = seq_lens[layer_idx] / len(prompts)
-                f.write(f"Layer {layer_idx:2d}: raw accuracy [{acc:.1%} ({hits[layer_idx]}/{total[layer_idx]})], avg seq len [{avg_len:.1f}]\n")
-            else:
-                f.write(f"Layer {layer_idx:2d}: No valid predictions\n")
+            torch.save(shard, f"{args.out_dir}/batch_{i//args.batch_size:05d}.pt")
 
 if __name__ == "__main__":
     main()
