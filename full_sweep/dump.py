@@ -3,6 +3,7 @@
 
 import argparse
 import torch
+import torch.nn.functional as F
 import os
 from tqdm import tqdm
 from utils import load_model_and_tokenizer, load_prompts, format_prompts
@@ -50,6 +51,7 @@ def main():
             shard["logits"] = torch.zeros(len(batch_prompts), args.num_steps, model.config.vocab_size, dtype=torch.bfloat16, device="cpu")
             for layer_idx in range(0, len(model.model.layers), args.layer_step):
                 shard[f"h{layer_idx}"] = torch.zeros(len(batch_prompts), args.num_steps, model.config.hidden_size, dtype=torch.bfloat16, device="cpu")
+                shard[f"e{layer_idx}"] = torch.zeros(len(batch_prompts), args.num_steps, dtype=torch.float32, device="cpu")
             
             # Track which sequences have finished and their actual lengths
             finished = torch.zeros(len(batch_prompts), dtype=torch.bool, device=model.device)
@@ -69,6 +71,12 @@ def main():
                         h_last = h[:, -1, :]
                         # Only save for sequences that haven't finished
                         shard[f"h{layer_idx}"][active_mask, step, :] = h_last[active_mask].cpu()
+                        intermediate_logits = model.lm_head(h_last[active_mask]).float()
+                        # print(intermediate_logits.shape)
+                        # breakpoint()
+                        intermediate_probs = F.softmax(intermediate_logits, dim=-1)
+                        entropy = (intermediate_probs * torch.log(intermediate_probs.clamp(min=1e-12))).sum(dim=-1)
+                        shard[f"e{layer_idx}"][active_mask, step] = entropy.cpu()
                     
                     # Only save logits for active sequences
                     shard["logits"][active_mask, step, :] = out.logits[active_mask, -1, :].cpu()
